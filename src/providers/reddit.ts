@@ -145,6 +145,54 @@ export async function redditSearch(
 		.map((c) => mapPost(c.data, 300));
 }
 
+export interface Community {
+	name: string;
+	subscribers: number;
+	description: string;
+	url: string;
+	over18: boolean;
+}
+
+interface RedditSubreddit {
+	display_name: string;
+	subscribers?: number;
+	public_description?: string;
+	over18?: boolean;
+}
+
+/**
+ * Finds subreddits by topic. Uses /subreddits/search rather than
+ * /api/subreddit_autocomplete_v2 because the latter matches names only — for
+ * "local llm" it misses r/LocalLLaMA (792k members, the actual home of the
+ * topic) while this endpoint searches descriptions and surfaces it.
+ *
+ * Results are returned in Reddit's own relevance order with subscriber counts
+ * attached; the calling model does the picking, the worker does not re-rank.
+ */
+export async function redditFindCommunities(
+	env: Env,
+	opts: { topic: string; limit: number }
+): Promise<Community[]> {
+	const params = new URLSearchParams({
+		q: opts.topic,
+		limit: String(opts.limit),
+		include_over_18: 'false',
+		raw_json: '1'
+	});
+	const data = (await redditGet(env, `/subreddits/search?${params}`)) as {
+		data?: { children?: Array<{ kind: string; data: RedditSubreddit }> };
+	};
+	return (data.data?.children ?? [])
+		.filter((c) => c.kind === 't5')
+		.map((c) => ({
+			name: `r/${c.data.display_name}`,
+			subscribers: c.data.subscribers ?? 0,
+			description: trim(c.data.public_description ?? '', 200),
+			url: `https://www.reddit.com/r/${c.data.display_name}/`,
+			over18: c.data.over18 ?? false
+		}));
+}
+
 interface RedditComment {
 	id: string;
 	author: string;

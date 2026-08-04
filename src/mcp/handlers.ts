@@ -27,10 +27,16 @@ export interface FetchPageArgs {
 	maxChars: number;
 }
 
+export interface FindCommunitiesArgs {
+	topic: string;
+	limit: number;
+}
+
 export type ValidatedCall =
 	| { ok: true; tool: 'social_search'; args: SearchArgs }
 	| { ok: true; tool: 'get_thread'; args: ThreadArgs }
 	| { ok: true; tool: 'fetch_page'; args: FetchPageArgs }
+	| { ok: true; tool: 'find_communities'; args: FindCommunitiesArgs }
 	| { ok: false; code: number; message: string };
 
 export function handleInitialize(id: string | number | null): JsonRpcResponse {
@@ -80,6 +86,17 @@ const FETCH_PAGE_DESCRIPTION =
 	'explicit error rather than the challenge page\'s own HTML, so never treat a failure message as ' +
 	'page content. Results are cached for 1 hour.';
 
+const FIND_COMMUNITIES_DESCRIPTION =
+	'Find the subreddits where a topic is actually discussed. Use this before social_search whenever ' +
+	'you are not already confident which community owns a subject — scoping a search to the right ' +
+	'subreddit is the single biggest lever on result quality. The intended chain is: ' +
+	'find_communities → pick one → social_search scoped to it → get_thread on promising hits. ' +
+	'Returns name, subscriber count, and description for each; subscriber count is a rough proxy ' +
+	'for whether a community is the main venue for a topic or a small offshoot, though the largest ' +
+	'is not always the most specialised — a 30k-member niche subreddit often has better practitioner ' +
+	'depth than a 20M general one. Matches on both names and descriptions, so expect some unrelated ' +
+	'results and judge by the description. Reddit only. Cached for 24 hours.';
+
 export function handleToolsList(id: string | number | null): JsonRpcResponse {
 	return {
 		jsonrpc: '2.0',
@@ -113,8 +130,8 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 								type: 'string',
 								description:
 									"Restrict to one subreddit, e.g. 'StableDiffusion' (Reddit only; ignored for X). " +
-									'Strongly recommended — unscoped Reddit search is much noisier. Discover the right ' +
-									'one from the "community" field of an unscoped search if you are unsure.'
+									'Strongly recommended — unscoped Reddit search is much noisier. Call ' +
+									'find_communities first if you do not know which subreddit owns the topic.'
 							},
 							sort: {
 								type: 'string',
@@ -183,6 +200,28 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 							}
 						},
 						required: ['url'],
+						additionalProperties: false
+					}
+				},
+				{
+					name: 'find_communities',
+					description: FIND_COMMUNITIES_DESCRIPTION,
+					inputSchema: {
+						type: 'object',
+						properties: {
+							topic: {
+								type: 'string',
+								description:
+									"Keywords describing the subject, e.g. 'local llm', 'video generation'."
+							},
+							limit: {
+								type: 'integer',
+								minimum: 1,
+								maximum: 25,
+								description: 'Max communities returned. Default: 10.'
+							}
+						},
+						required: ['topic'],
 						additionalProperties: false
 					}
 				}
@@ -287,9 +326,22 @@ export function validateToolCall(params: unknown): ValidatedCall {
 		return { ok: true, tool: 'fetch_page', args: { url: url.trim(), maxChars } };
 	}
 
+	if (p?.name === 'find_communities') {
+		const topic = args.topic;
+		if (typeof topic !== 'string' || !topic.trim()) {
+			return invalid("'topic' is required and must be a non-empty string.");
+		}
+		const rawLimit = args.limit ?? 10;
+		if (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit)) {
+			return invalid("'limit' must be a number between 1 and 25.");
+		}
+		const limit = Math.max(1, Math.min(25, Math.floor(rawLimit)));
+		return { ok: true, tool: 'find_communities', args: { topic: topic.trim(), limit } };
+	}
+
 	return {
 		ok: false,
 		code: MCP_ERROR_CODES.METHOD_NOT_FOUND,
-		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread' and 'fetch_page'.`
+		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread', 'fetch_page' and 'find_communities'.`
 	};
 }

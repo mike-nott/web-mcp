@@ -4,6 +4,7 @@
 export const SEARCH_CACHE_TTL = 3600; // 1h
 export const THREAD_CACHE_TTL = 900; // 15min
 export const PAGE_CACHE_TTL = 3600; // 1h — saves FireCrawl credits on repeat reads
+export const COMMUNITY_CACHE_TTL = 86400; // 24h — the subreddit landscape moves slowly
 
 export async function cacheKey(kind: string, params: Record<string, unknown>): Promise<string> {
 	const canonical = JSON.stringify(

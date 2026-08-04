@@ -8,11 +8,18 @@ Deploy it once to your own Cloudflare account, register one URL + bearer token i
 
 | Tool | Purpose |
 |------|---------|
+| `find_communities` | Find which subreddits actually discuss a topic, with subscriber counts |
 | `social_search` | Search Reddit/X — time windows, native search operators, engagement signals (scores, comment counts, authors, dates) |
 | `get_thread` | Pull a full scored comment/reply tree for any post or tweet (bare id or URL) |
 | `fetch_page` | Read pages behind bot protection, JavaScript-rendered shells, and PDFs |
 
-Deliberately minimal: three tools, no LLM in the worker, no ranking or synthesis. Raw signals flow straight to the calling model, which does its own reasoning. (A big multi-tool surface bloats MCP clients' context windows — a few well-described tools route better.)
+The intended research chain:
+
+```
+find_communities("local llm")  →  social_search scoped to r/LocalLLaMA  →  get_thread on the best hits
+```
+
+Deliberately minimal: four tools, no LLM in the worker, no ranking or synthesis. Raw signals flow straight to the calling model, which does its own reasoning. (A big multi-tool surface bloats MCP clients' context windows — a few well-described tools route better.)
 
 ## Architecture
 
@@ -116,7 +123,7 @@ Claude Code loads MCP servers at startup — restart your session after adding. 
 ## Notes
 
 - **Costs:** Reddit is free (official API free tier, 1000 req/10min). X costs ~$0.15/1k tweets via TwitterAPI.io. FireCrawl charges 1–5 credits only when a page is actually blocked — open pages are served free by the direct tier. Daily ceilings (`X_DAILY_CALL_LIMIT`, `FIRECRAWL_DAILY_CALL_LIMIT`) cap worst-case spend and return a readable message when hit. The worker itself runs free.
-- **Search tips:** Reddit and X use keyword matching, not semantic search — short keyword queries beat natural-language questions, and scoping to a subreddit is the single biggest quality lever. The tool descriptions teach the calling model this.
+- **Search tips:** Reddit and X use keyword matching, not semantic search — short keyword queries beat natural-language questions, and scoping to a subreddit is the single biggest quality lever (use `find_communities` when you don't know which one). The tool descriptions teach the calling model this.
 - **TwitterAPI.io is a third-party service** — cheaper than the official X API by ~30x, but it's grey-market data access. The provider layer is abstracted (`src/providers/`) so you can swap in the official X API if you prefer.
 - **Privacy:** this is designed as a *private, single-user* server — one shared token, no user accounts. Don't publish your worker URL + token together.
 
@@ -125,7 +132,7 @@ Claude Code loads MCP servers at startup — restart your session after adding. 
 Planned or under consideration:
 
 - **Discord** — search across servers you're a member of. Discord has no read API for this, so the likely shape is a small local companion process (browser-driven, residential IP) rather than a worker provider — separate component, same MCP pattern.
-- **Community discovery** — a way to find which subreddits actually discuss a topic, so searches can be auto-scoped (unscoped Reddit search is markedly noisier).
+- **Exa** — optional semantic search over the open web, for cases where lexical keyword matching isn't enough.
 - More sources as the walls go up.
 
 Ideas and suggestions welcome via issues.

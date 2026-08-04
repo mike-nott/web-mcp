@@ -3,16 +3,17 @@
 // can read and react to them; only schema violations are protocol errors.
 
 import type { Env } from './env';
-import type { FetchPageArgs, SearchArgs, ThreadArgs } from './mcp/handlers';
+import type { FetchPageArgs, FindCommunitiesArgs, SearchArgs, ThreadArgs } from './mcp/handlers';
 import {
 	cacheKey,
 	getCached,
 	putCached,
+	COMMUNITY_CACHE_TTL,
 	PAGE_CACHE_TTL,
 	SEARCH_CACHE_TTL,
 	THREAD_CACHE_TTL
 } from './cache';
-import { redditSearch, redditThread } from './providers/reddit';
+import { redditFindCommunities, redditSearch, redditThread } from './providers/reddit';
 import type { SearchResult } from './providers/reddit';
 import { xSearch, xThread } from './providers/x';
 import { assertPublicHttpsUrl, directFetch } from './providers/page';
@@ -67,6 +68,24 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	// Cache only complete successes so a provider blip doesn't stick for an hour.
 	if (failures.length === 0) await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
 	return ok(text);
+}
+
+export async function runFindCommunities(
+	env: Env,
+	args: FindCommunitiesArgs
+): Promise<ToolResult> {
+	const key = await cacheKey('communities', { ...args });
+	const cached = await getCached(env.KV, key);
+	if (cached) return ok(cached);
+
+	try {
+		const communities = await redditFindCommunities(env, args);
+		const text = JSON.stringify({ communities }, null, 1);
+		await putCached(env.KV, key, text, COMMUNITY_CACHE_TTL);
+		return ok(text);
+	} catch (err) {
+		return fail(err, 'find_communities failed');
+	}
 }
 
 export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolResult> {

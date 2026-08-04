@@ -16,7 +16,7 @@ import {
 	touchMcpSession
 } from './mcp/session';
 import { authenticateRequest } from './auth';
-import { runFetchPage, runGetThread, runSocialSearch } from './tools';
+import { runFetchPage, runFindCommunities, runGetThread, runSocialSearch } from './tools';
 
 const SESSION_HEADER = 'Mcp-Session-Id';
 
@@ -84,6 +84,9 @@ async function handlePost(request: Request, env: Env): Promise<Response> {
 					break;
 				case 'fetch_page':
 					result = await runFetchPage(env, validated.args);
+					break;
+				case 'find_communities':
+					result = await runFindCommunities(env, validated.args);
 					break;
 			}
 			return jsonResponse({
