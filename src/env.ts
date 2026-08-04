@@ -9,6 +9,9 @@ export interface Env {
 	SUPADATA_API_KEY: string;
 	EXA_API_KEY: string;
 	BRAVE_API_KEY: string;
+	TAVILY_API_KEY: string;
+	/** "auto" (default, prefers Tavily), "tavily", or "brave". */
+	KEYWORD_SEARCH_PROVIDER: string;
 	REDDIT_USER_AGENT: string;
 	X_DAILY_CALL_LIMIT: string;
 	FIRECRAWL_DAILY_CALL_LIMIT: string;
@@ -16,4 +19,5 @@ export interface Env {
 	SUPADATA_DAILY_LIMIT: string;
 	EXA_DAILY_CALL_LIMIT: string;
 	BRAVE_DAILY_CALL_LIMIT: string;
+	TAVILY_DAILY_LIMIT: string;
 }

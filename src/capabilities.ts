@@ -5,6 +5,7 @@
 // tools/list response, so a client is never offered a tool that cannot work.
 
 import type { Env } from './env';
+import { resolveKeywordEngine } from './providers/keyword';
 
 export interface Capabilities {
 	reddit: boolean;
@@ -16,8 +17,11 @@ export interface Capabilities {
 	firecrawl: boolean;
 	/** Semantic search + find-similar. */
 	exa: boolean;
-	/** Keyword web search. */
+	/** Keyword web search engines. */
 	brave: boolean;
+	tavily: boolean;
+	/** True when either keyword engine is usable under the current preference. */
+	keyword: boolean;
 }
 
 /** Treats empty/whitespace as unset, so a blank var behaves like a missing one. */
@@ -33,14 +37,19 @@ export function detectCapabilities(env: Env): Capabilities {
 		transcripts: set(env.SUPADATA_API_KEY),
 		firecrawl: set(env.FIRECRAWL_API_KEY),
 		exa: set(env.EXA_API_KEY),
-		brave: set(env.BRAVE_API_KEY)
+		brave: set(env.BRAVE_API_KEY),
+		tavily: set(env.TAVILY_API_KEY),
+		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
+		// missing means keyword search is genuinely unavailable, not silently
+		// served by the other one.
+		keyword: resolveKeywordEngine(env) !== null
 	};
 }
 
 /** Search modes available on web_search, in default-preference order. */
 export function availableSearchModes(caps: Capabilities): Array<'keyword' | 'semantic'> {
 	const modes: Array<'keyword' | 'semantic'> = [];
-	if (caps.brave) modes.push('keyword');
+	if (caps.keyword) modes.push('keyword');
 	if (caps.exa) modes.push('semantic');
 	return modes;
 }

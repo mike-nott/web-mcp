@@ -68,7 +68,7 @@ The `tier` field in the response says which path served it. Crucially, a page th
 | `YOUTUBE_API_KEY` | YouTube in `social_search`/`get_thread` | Free (~100 searches/day) |
 | `SUPADATA_API_KEY` | Video transcripts via `fetch_page` | 1 credit/transcript |
 | `FIRECRAWL_API_KEY` | `fetch_page` escalation past bot protection, plus PDFs | 1–5 credits, only when blocked |
-| `BRAVE_API_KEY` | `web_search` keyword mode — an ordinary search engine | ~$5/1k queries (no free tier since Feb 2026) |
+| `TAVILY_API_KEY` **or** `BRAVE_API_KEY` | `web_search` keyword mode — an ordinary search engine | Tavily: **1,000 credits/month free**, then $0.008/credit · Brave: ~$5/1k, no free tier since Feb 2026 |
 | `EXA_API_KEY` | `web_search` semantic mode — meaning-based search and find-similar | ~$0.007/call |
 
 A Reddit-only install, for example, exposes exactly `social_search` (Reddit only), `get_thread`, `find_communities` and `fetch_page` — `web_search` simply isn't there. Ask for something unconfigured and the error names the variable to set.
@@ -105,7 +105,17 @@ Note the quota asymmetry: YouTube *search* is capped at ~100 calls/day in its ow
 
 `web_search` has two modes, each backed by its own provider. Configure either or both.
 
-- **`keyword` — [Brave Search API](https://api-dashboard.search.brave.com)**. An ordinary search engine over Brave's own independent index (not Google, not Bing), good at factual lookups, news, versions and dates. **This is the mode to configure if your MCP client has no web search of its own** — a local LLM, for instance. Note Brave removed its free tier in February 2026; it's now metered at roughly $5/1k queries with about $5/month of credits.
+- **`keyword` — [Tavily](https://app.tavily.com) or [Brave](https://api-dashboard.search.brave.com)**. An ordinary search engine, good at factual lookups, news, versions and dates. **This is the mode to configure if your MCP client has no web search of its own** — a local LLM, for instance. Set either key; with both, `KEYWORD_SEARCH_PROVIDER` (`auto` / `tavily` / `brave`) picks, defaulting to Tavily.
+
+  | | Tavily | Brave |
+  |---|---|---|
+  | Free tier | **1,000 credits/month** | None since Feb 2026 |
+  | Domain filters | Native | Translated to `site:` operators |
+  | Full page text | Yes, via `content: "text"` | Snippets only |
+  | Published dates | No | Yes |
+  | Index | Aggregated | Own independent index |
+
+  The `engine` field on every keyword result says which one served it.
 - **`semantic` — [Exa](https://dashboard.exa.ai)**. Matches meaning rather than keywords, so descriptive queries work where a keyword index needs the exact words to appear. Also does find-similar-by-URL, which nothing else here can do.
 
 They're genuinely complementary: semantic search is measurably weaker at plain factual lookups, and keyword search can't find a page whose vocabulary you can't guess. With both configured, `keyword` is the default and `semantic` is the deliberate choice.
@@ -132,6 +142,7 @@ YOUTUBE_API_KEY=<from step 4, optional>
 SUPADATA_API_KEY=<from step 4, optional>
 EXA_API_KEY=<from step 5, optional>
 BRAVE_API_KEY=<from step 5, optional>
+TAVILY_API_KEY=<from step 5, optional>
 EOF
 npm run dev        # serves http://localhost:8787/mcp
 npm run typecheck
@@ -155,6 +166,7 @@ echo "<value>" | npx wrangler secret put YOUTUBE_API_KEY     # optional
 echo "<value>" | npx wrangler secret put SUPADATA_API_KEY    # optional
 echo "<value>" | npx wrangler secret put EXA_API_KEY         # optional
 echo "<value>" | npx wrangler secret put BRAVE_API_KEY       # optional
+echo "<value>" | npx wrangler secret put TAVILY_API_KEY      # optional
 
 npm run deploy
 ```

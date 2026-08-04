@@ -51,6 +51,26 @@ export interface WebResult {
 	text?: string;
 }
 
+/** Shared contract for keyword search engines (Brave, Tavily). */
+export interface KeywordArgs {
+	query: string;
+	time: string;
+	limit: number;
+	content: 'highlights' | 'text' | 'none';
+	includeDomains?: string[];
+	excludeDomains?: string[];
+}
+
+export interface KeywordResponse {
+	results: WebResult[];
+	/** Caveats worth passing to the caller (clamped limits, unsupported options). */
+	notes: string[];
+	/** Which engine served this, for transparency. */
+	engine: 'brave' | 'tavily';
+	/** Credits consumed, if the engine reports them. Neither currently does. */
+	creditsUsed?: number;
+}
+
 export interface ScrapedPage {
 	finalUrl: string;
 	title: string;

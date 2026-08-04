@@ -146,7 +146,7 @@ const FIND_COMMUNITIES_DESCRIPTION =
 	'results and judge by the description. Reddit only. Cached for 24 hours.';
 
 function webSearchDescription(caps: Capabilities): string {
-	const both = caps.brave && caps.exa;
+	const both = caps.keyword && caps.exa;
 	const parts: string[] = ['Search the open web.'];
 
 	if (both) {
@@ -161,7 +161,7 @@ function webSearchDescription(caps: Capabilities): string {
 				'and for similar_to (find pages like a URL you already have), include/exclude domains at ' +
 				'scale, and category filtering.'
 		);
-	} else if (caps.brave) {
+	} else if (caps.keyword) {
 		parts.push(
 			'An ordinary keyword search engine over an independent index — good for factual lookups, ' +
 				'news, named things, versions and dates.'
@@ -594,8 +594,8 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		const modes = availableSearchModes(caps);
 		if (modes.length === 0) {
 			return invalid(
-				'No web search engine is configured on this server. Set BRAVE_API_KEY for keyword ' +
-					'search or EXA_API_KEY for semantic search.'
+				'No web search engine is configured on this server. Set TAVILY_API_KEY or ' +
+					'BRAVE_API_KEY for keyword search, or EXA_API_KEY for semantic search.'
 			);
 		}
 		const query = args.query;
@@ -627,7 +627,7 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		if (!modes.includes(mode)) {
 			return invalid(
 				`Search mode '${mode}' is not configured on this server — set ${
-					mode === 'keyword' ? 'BRAVE_API_KEY' : 'EXA_API_KEY'
+					mode === 'keyword' ? 'TAVILY_API_KEY or BRAVE_API_KEY' : 'EXA_API_KEY'
 				} to enable it. Available: ${modes.join(', ')}.`
 			);
 		}

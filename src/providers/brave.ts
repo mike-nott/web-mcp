@@ -11,7 +11,7 @@
 import type { Env } from '../env';
 import { consumeBudget } from '../budget';
 import { ProviderError } from './errors';
-import type { WebResult } from './types';
+import type { KeywordArgs, KeywordResponse, WebResult } from './types';
 
 const API_BASE = 'https://api.search.brave.com/res/v1/web/search';
 const MAX_COUNT = 20; // Brave's hard cap, below our tool's limit of 25
@@ -21,20 +21,6 @@ const MAX_COUNT = 20; // Brave's hard cap, below our tool's limit of 25
 // without this. Verified live: back-to-back calls failed until retried.
 const RATE_LIMIT_RETRIES = 2;
 const RATE_LIMIT_BACKOFF_MS = 1200;
-
-export interface BraveArgs {
-	query: string;
-	time: string;
-	limit: number;
-	content: 'highlights' | 'text' | 'none';
-	includeDomains?: string[];
-	excludeDomains?: string[];
-}
-
-export interface BraveResponse {
-	results: WebResult[];
-	notes: string[];
-}
 
 interface RawResult {
 	title?: string;
@@ -57,7 +43,7 @@ const FRESHNESS: Record<string, string> = {
  * in the query itself, so the tool's domain filters are translated rather than
  * silently dropped.
  */
-function applyDomainFilters(query: string, args: BraveArgs): string {
+function applyDomainFilters(query: string, args: KeywordArgs): string {
 	let q = query;
 	if (args.includeDomains?.length) {
 		const clause = args.includeDomains.map((d) => `site:${d}`).join(' OR ');
@@ -69,7 +55,7 @@ function applyDomainFilters(query: string, args: BraveArgs): string {
 	return q;
 }
 
-export async function braveSearch(env: Env, args: BraveArgs): Promise<BraveResponse> {
+export async function braveSearch(env: Env, args: KeywordArgs): Promise<KeywordResponse> {
 	if (!env.BRAVE_API_KEY) {
 		throw new ProviderError(
 			'BRAVE_API_KEY is not configured, so keyword search is unavailable on this server.'
@@ -144,5 +130,5 @@ export async function braveSearch(env: Env, args: BraveArgs): Promise<BraveRespo
 		};
 	});
 
-	return { results, notes };
+	return { results, notes, engine: 'brave' };
 }

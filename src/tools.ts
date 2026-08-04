@@ -27,7 +27,7 @@ import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
 import { exaSearch } from './providers/exa';
-import { braveSearch } from './providers/brave';
+import { keywordSearch, resolveKeywordEngine } from './providers/keyword';
 
 export interface ToolResult {
 	text: string;
@@ -81,14 +81,17 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 }
 
 export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolResult> {
-	const key = await cacheKey('web', { ...args });
+	// The engine is part of the key: without it, flipping KEYWORD_SEARCH_PROVIDER
+	// would serve the previous engine's cached results for an hour, which defeats
+	// the point of being able to switch.
+	const engineKey = args.mode === 'keyword' ? (resolveKeywordEngine(env) ?? 'none') : 'exa';
+	const key = await cacheKey('web', { ...args, engine: engineKey });
 	const cached = await getCached(env.KV, key);
 	if (cached) return ok(cached);
 
 	try {
 		if (args.mode === 'keyword') {
-			const notes = [...(args.category ? ['category is ignored in keyword mode.'] : [])];
-			const { results, notes: providerNotes } = await braveSearch(env, {
+			const { results, notes, engine, creditsUsed } = await keywordSearch(env, {
 				query: args.query ?? '',
 				time: args.time,
 				limit: args.limit,
@@ -96,9 +99,18 @@ export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolR
 				includeDomains: args.includeDomains,
 				excludeDomains: args.excludeDomains
 			});
-			const all = [...providerNotes, ...notes];
+			const allNotes = [
+				...notes,
+				...(args.category ? ['category is ignored in keyword mode.'] : [])
+			];
 			const text = JSON.stringify(
-				{ mode: 'keyword', results, ...(all.length ? { note: all.join(' ') } : {}) },
+				{
+					mode: 'keyword',
+					engine,
+					results,
+					...(creditsUsed !== undefined ? { credits_used: creditsUsed } : {}),
+					...(allNotes.length ? { note: allNotes.join(' ') } : {})
+				},
 				null,
 				1
 			);
