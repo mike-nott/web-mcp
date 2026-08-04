@@ -9,7 +9,9 @@ import { ProviderError } from './errors';
 import type { ScrapedPage } from './firecrawl';
 
 const FETCH_TIMEOUT_MS = 12000;
-const MIN_USEFUL_TEXT = 500; // below this, assume a shell/challenge and escalate
+// Real articles and docs pages essentially always clear this; anything shorter
+// is usually navigation chrome around an unrendered body, so it escalates.
+const MIN_USEFUL_TEXT = 1000;
 
 // A normal browser UA: many sites serve degraded or blocked responses to
 // obviously-automated clients, and tier 1 exists to avoid burning credits.

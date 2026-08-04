@@ -17,13 +17,31 @@ import { ProviderError } from './errors';
 const API_BASE = 'https://api.firecrawl.dev/v2';
 const SCRAPE_TIMEOUT_MS = 30000; // stays inside MCP client tool timeouts (no SSE keepalive)
 const CACHE_MAX_AGE_MS = 172800000; // 48h — reuse FireCrawl's own page cache
-const MIN_USEFUL_CONTENT = 200; // shorter than this from a "success" is a challenge/stub page
+const THIN_CONTENT = 200;
+
+// Short content alone doesn't mean blocked — plenty of legitimate pages and
+// small PDFs are brief. Only treat it as a wall when the text also reads like
+// a challenge or login prompt.
+const WALL_MARKERS = [
+	'just a moment',
+	'checking your browser',
+	'verify you are human',
+	'are you a robot',
+	'enable javascript',
+	'access denied',
+	'attention required',
+	'sign in to continue',
+	'log in to continue',
+	'subscribe to continue',
+	'captcha'
+];
 
 export interface ScrapedPage {
 	finalUrl: string;
 	title: string;
 	status: number;
 	content: string;
+	note?: string;
 }
 
 interface FirecrawlResponse {
@@ -106,16 +124,27 @@ export async function firecrawlScrape(env: Env, url: string): Promise<ScrapedPag
 			`The page returned HTTP ${status} even through FireCrawl — it is unavailable or hard-blocked, not readable content.`
 		);
 	}
-	if (content.length < MIN_USEFUL_CONTENT) {
+	if (!content) {
 		throw new ProviderError(
-			`FireCrawl returned almost no content (${content.length} chars) — the page is likely a challenge, login wall, or empty shell rather than an article.`
+			'FireCrawl returned an empty document — the page has no extractable content.'
 		);
+	}
+	if (content.length < THIN_CONTENT) {
+		const haystack = content.toLowerCase();
+		if (WALL_MARKERS.some((marker) => haystack.includes(marker))) {
+			throw new ProviderError(
+				`The page is behind a challenge or login wall — FireCrawl retrieved only ${content.length} characters of interstitial text, not the article.`
+			);
+		}
 	}
 
 	return {
 		finalUrl: metadata.url ?? metadata.sourceURL ?? url,
 		title: first(metadata.title),
 		status: status || 200,
-		content
+		content,
+		...(content.length < THIN_CONTENT
+			? { note: `Page is unusually short (${content.length} chars) — verify it is the full content.` }
+			: {})
 	};
 }

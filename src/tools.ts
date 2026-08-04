@@ -89,6 +89,7 @@ export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolR
 			title: page.title,
 			status: page.status,
 			tier,
+			...(page.note ? { note: page.note } : {}),
 			...(truncated ? { truncated: true, total_chars: page.content.length } : {}),
 			content: truncated ? page.content.slice(0, args.maxChars) + '\n\n… [truncated]' : page.content
 		};
