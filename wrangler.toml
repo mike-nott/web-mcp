@@ -16,6 +16,4 @@ X_DAILY_CALL_LIMIT = "500"
 
 [[kv_namespaces]]
 binding = "KV"
-# Deploy step: create with `wrangler kv namespace create KV` on the Nott account
-# and paste the returned id here. Local `wrangler dev` simulates KV and ignores it.
-id = "web-mcp-kv-created-at-deploy"
+id = "f420d454b34a4bffbdde610ff23f71d5"
