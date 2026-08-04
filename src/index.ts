@@ -16,6 +16,7 @@ import {
 	touchMcpSession
 } from './mcp/session';
 import { authenticateRequest } from './auth';
+import { detectCapabilities } from './capabilities';
 import {
 	runFetchPage,
 	runFindCommunities,
@@ -72,11 +73,13 @@ async function handlePost(request: Request, env: Env): Promise<Response> {
 	}
 	await touchMcpSession(env.KV, session);
 
+	const caps = detectCapabilities(env);
+
 	switch (body.method) {
 		case 'tools/list':
-			return jsonResponse(handleToolsList(id));
+			return jsonResponse(handleToolsList(id, caps));
 		case 'tools/call': {
-			const validated = validateToolCall(body.params);
+			const validated = validateToolCall(body.params, caps);
 			if (!validated.ok) {
 				return jsonResponse(rpcError(id, validated.code, validated.message));
 			}

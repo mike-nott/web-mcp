@@ -56,6 +56,22 @@ The `tier` field in the response says which path served it. Crucially, a page th
 - X daily call ceiling (`X_DAILY_CALL_LIMIT`, default 500/day) — exhaustion returns a readable tool result, not a crash
 - Reddit uses the official Data API free tier via app-only OAuth: authenticated datacenter traffic is Reddit's sanctioned path, with a descriptive User-Agent and rate-header backoff
 
+## Pick your providers — everything is optional
+
+**`MCP_AUTH_TOKEN` is the only required secret.** Every data provider is independent: set the keys for the sources you want and skip the rest. The server detects what's configured and **only advertises tools that actually work**, so your agent is never offered a tool it can't use, and never has to discover that by failing.
+
+| You provide | You get | Cost |
+|---|---|---|
+| *(nothing)* | `fetch_page` on ordinary pages — the free direct tier | Free |
+| `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` | Reddit in `social_search`/`get_thread`, plus `find_communities` | Free |
+| `TWITTERAPI_IO_KEY` | X in `social_search`/`get_thread` | ~$0.15/1k tweets |
+| `YOUTUBE_API_KEY` | YouTube in `social_search`/`get_thread` | Free (~100 searches/day) |
+| `SUPADATA_API_KEY` | Video transcripts via `fetch_page` | 1 credit/transcript |
+| `FIRECRAWL_API_KEY` | `fetch_page` escalation past bot protection, plus PDFs | 1–5 credits, only when blocked |
+| `EXA_API_KEY` | `web_search` — semantic search and find-similar | ~$0.007/call |
+
+A Reddit-only install, for example, exposes exactly `social_search` (Reddit only), `get_thread`, `find_communities` and `fetch_page` — `web_search` simply isn't there. Ask for something unconfigured and the error names the variable to set.
+
 ## Setup
 
 ### 1. Create a Reddit app (free)

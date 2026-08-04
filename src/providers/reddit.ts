@@ -11,6 +11,11 @@ const TOKEN_KEY = 'reddit:token';
 const TOKEN_TTL_SECONDS = 3300; // Reddit tokens last 60min; refresh at 55
 
 async function getToken(env: Env): Promise<string> {
+	if (!env.REDDIT_CLIENT_ID || !env.REDDIT_CLIENT_SECRET) {
+		throw new ProviderError(
+			'Reddit is not configured on this server — set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET.'
+		);
+	}
 	const cached = await env.KV.get(TOKEN_KEY);
 	if (cached) return cached;
 	const res = await fetch('https://www.reddit.com/api/v1/access_token', {

@@ -5,6 +5,15 @@
 import type { JsonRpcResponse } from './types';
 import { MCP_PROTOCOL_VERSION } from './types';
 import { MCP_ERROR_CODES } from './errors';
+import type { Capabilities } from '../capabilities';
+import { availablePlatforms } from '../capabilities';
+
+/** Names the env var a user must set to unlock each platform. */
+const PLATFORM_ENV: Record<string, string> = {
+	reddit: 'REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET',
+	x: 'TWITTERAPI_IO_KEY',
+	youtube: 'YOUTUBE_API_KEY'
+};
 
 export interface SearchArgs {
 	query: string;
@@ -93,18 +102,36 @@ const THREAD_DESCRIPTION =
 	'video URL to read what was actually said. Accepts a bare post/tweet/video id or a full URL. ' +
 	'Results are cached for 15 minutes.';
 
-const FETCH_PAGE_DESCRIPTION =
-	'Read the content of any URL that ordinary fetching cannot reach — sites behind Cloudflare or ' +
-	'other bot protection, JavaScript-rendered pages that return an empty shell, PDFs, and video ' +
-	'URLs (YouTube, TikTok, Instagram, X), where the content returned is the spoken transcript. ' +
-	'Reading a video transcript is the only way to learn what a video actually says. Use this whenever ' +
-	'your normal web-fetch tool fails, errors, is refused, or returns a challenge/consent page or a ' +
-	'near-empty document; it is the fallback, not the first choice. Returns extracted text as ' +
-	'markdown plus the final URL, title and HTTP status. The worker tries a free direct fetch first ' +
-	'and only escalates to the paid scraping service when the page is genuinely blocked — the ' +
-	'"tier" field tells you which path served the result. If a page cannot be retrieved you get an ' +
-	'explicit error rather than the challenge page\'s own HTML, so never treat a failure message as ' +
-	'page content. Results are cached for 1 hour.';
+/**
+ * Assembled from capabilities: the escalation and transcript sentences only
+ * appear when those providers are configured, so the description never promises
+ * something this deployment cannot do.
+ */
+function fetchPageDescription(caps: Capabilities): string {
+	const canRead = ['JavaScript-rendered pages that return an empty shell'];
+	if (caps.firecrawl) canRead.unshift('sites behind Cloudflare or other bot protection');
+	if (caps.firecrawl) canRead.push('PDFs');
+	if (caps.transcripts) {
+		canRead.push(
+			'and video URLs (YouTube, TikTok, Instagram, X), where the content returned is the spoken ' +
+				'transcript — the only way to learn what a video actually says'
+		);
+	}
+	const tiers = caps.firecrawl
+		? 'The worker tries a free direct fetch first and only escalates to the paid scraping service ' +
+			'when the page is genuinely blocked — the "tier" field tells you which path served the result. '
+		: 'This server has no bot-protection bypass configured, so pages behind an active challenge ' +
+			'will report an error rather than returning content. ';
+	return (
+		`Read the content of a URL: ${canRead.join(', ')}. ` +
+		'Use this whenever your normal web-fetch tool fails, errors, is refused, or returns a ' +
+		'challenge/consent page or a near-empty document; it is the fallback, not the first choice. ' +
+		'Returns extracted text as markdown plus the final URL, title and HTTP status. ' +
+		tiers +
+		'If a page cannot be retrieved you get an explicit error rather than the challenge page\'s own ' +
+		'HTML, so never treat a failure message as page content. Results are cached for 1 hour.'
+	);
+}
 
 const FIND_COMMUNITIES_DESCRIPTION =
 	'Find the subreddits where a topic is actually discussed. Use this before social_search whenever ' +
@@ -131,110 +158,125 @@ const WEB_SEARCH_DESCRIPTION =
 	'Provide exactly one of query or similar_to. Returns title, url, date, author and query-relevant ' +
 	'highlights, plus the real cost of the call in cost_usd. Cached for 1 hour.';
 
-export function handleToolsList(id: string | number | null): JsonRpcResponse {
-	return {
-		jsonrpc: '2.0',
-		id,
-		result: {
-			tools: [
-				{
-					name: 'social_search',
-					description: SEARCH_DESCRIPTION,
-					inputSchema: {
-						type: 'object',
-						properties: {
-							query: {
-								type: 'string',
-								description:
-									'Keywords, not a question or sentence — these engines match terms literally. ' +
-									'Quote phrases for exact matching. Platform-native operators pass through unchanged.'
-							},
-							platform: {
-								type: 'string',
-								enum: ['reddit', 'x', 'youtube', 'both', 'all'],
-								description:
-									'Where to search. "both" = Reddit + X (the default). "all" adds YouTube — ' +
-									'use it when video tutorials or talks would help, bearing in mind YouTube ' +
-									'search has a much tighter daily quota.'
-							},
-							time: {
-								type: 'string',
-								enum: ['day', 'week', 'month', 'year', 'all'],
-								description:
-									'Recency window. Default: month — practitioner consensus decays fast.'
-							},
-							community: {
-								type: 'string',
-								description:
-									"Restrict to one subreddit, e.g. 'StableDiffusion' (Reddit only; ignored for X). " +
-									'Strongly recommended — unscoped Reddit search is much noisier. Call ' +
-									'find_communities first if you do not know which subreddit owns the topic.'
-							},
-							sort: {
-								type: 'string',
-								enum: ['relevance', 'top', 'new'],
-								description: 'Result ordering. Default: relevance.'
-							},
-							limit: {
-								type: 'integer',
-								minimum: 1,
-								maximum: 25,
-								description: 'Max results per platform. Default: 10.'
-							}
-						},
-						required: ['query'],
-						additionalProperties: false
+export function handleToolsList(
+	id: string | number | null,
+	caps: Capabilities
+): JsonRpcResponse {
+	const platforms = availablePlatforms(caps);
+	// "both"/"all" only mean anything when there is more than one to combine.
+	const searchPlatforms: string[] = [...platforms];
+	if (platforms.length > 1) {
+		if (caps.reddit && caps.x) searchPlatforms.push('both');
+		searchPlatforms.push('all');
+	}
+
+	const tools: unknown[] = [];
+
+	if (platforms.length > 0) {
+		tools.push({
+			name: 'social_search',
+			description: SEARCH_DESCRIPTION,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					query: {
+						type: 'string',
+						description:
+							'Keywords, not a question or sentence — these engines match terms literally. ' +
+							'Quote phrases for exact matching. Platform-native operators pass through unchanged.'
+					},
+					platform: {
+						type: 'string',
+						enum: searchPlatforms,
+						description:
+							platforms.length > 1
+								? 'Where to search. Defaults to the text platforms configured here (Reddit ' +
+									'and/or X). "all" adds YouTube — ask for it when video tutorials or talks would ' +
+									'help, bearing in mind YouTube search has a much tighter daily quota, which is ' +
+									'why it is not in the default.'
+								: `Where to search. Only ${platforms[0]} is configured on this server.`
+					},
+					time: {
+						type: 'string',
+						enum: ['day', 'week', 'month', 'year', 'all'],
+						description: 'Recency window. Default: month — practitioner consensus decays fast.'
+					},
+					community: {
+						type: 'string',
+						description:
+							"Restrict to one subreddit, e.g. 'StableDiffusion' (Reddit only; ignored elsewhere). " +
+							'Strongly recommended — unscoped Reddit search is much noisier.' +
+							(caps.reddit
+								? ' Call find_communities first if you do not know which subreddit owns the topic.'
+								: '')
+					},
+					sort: {
+						type: 'string',
+						enum: ['relevance', 'top', 'new'],
+						description: 'Result ordering. Default: relevance.'
+					},
+					limit: {
+						type: 'integer',
+						minimum: 1,
+						maximum: 25,
+						description: 'Max results per platform. Default: 10.'
 					}
 				},
-				{
-					name: 'get_thread',
-					description: THREAD_DESCRIPTION,
-					inputSchema: {
-						type: 'object',
-						properties: {
-							platform: {
-								type: 'string',
-								enum: ['reddit', 'x', 'youtube'],
-								description: 'Which platform the id/URL belongs to.'
-							},
-							id: {
-								type: 'string',
-								description:
-									"Post/tweet id from social_search results, or a full URL (reddit.com/.../comments/<id>/... or x.com/.../status/<id>)."
-							},
-							sort: {
-								type: 'string',
-								enum: ['top', 'new'],
-								description: 'Comment ordering. Default: top.'
-							},
-							limit: {
-								type: 'integer',
-								minimum: 1,
-								maximum: 100,
-								description: 'Max comments/replies returned. Default: 30.'
-							}
-						},
-						required: ['platform', 'id'],
-						additionalProperties: false
+				required: ['query'],
+				additionalProperties: false
+			}
+		});
+
+		tools.push({
+			name: 'get_thread',
+			description: THREAD_DESCRIPTION,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					platform: {
+						type: 'string',
+						enum: platforms,
+						description: 'Which platform the id/URL belongs to.'
+					},
+					id: {
+						type: 'string',
+						description:
+							'Post/tweet/video id from social_search results, or a full URL.'
+					},
+					sort: {
+						type: 'string',
+						enum: ['top', 'new'],
+						description: 'Comment ordering. Default: top.'
+					},
+					limit: {
+						type: 'integer',
+						minimum: 1,
+						maximum: 100,
+						description: 'Max comments/replies returned. Default: 30.'
 					}
 				},
-				{
-					name: 'fetch_page',
-					description: FETCH_PAGE_DESCRIPTION,
-					inputSchema: {
-						type: 'object',
-						properties: {
-							url: {
-								type: 'string',
-								description: 'Full http(s) URL of the page to read.'
-							},
-							max_chars: {
-								type: 'integer',
-								minimum: 1000,
-								maximum: 200000,
-								description:
-									'Truncate the returned content to this many characters. Default: 50000.'
-							},
+				required: ['platform', 'id'],
+				additionalProperties: false
+			}
+		});
+	}
+
+	// Always available: the free direct-fetch tier needs no keys at all.
+	tools.push({
+		name: 'fetch_page',
+		description: fetchPageDescription(caps),
+		inputSchema: {
+			type: 'object',
+			properties: {
+				url: { type: 'string', description: 'Full http(s) URL of the page to read.' },
+				max_chars: {
+					type: 'integer',
+					minimum: 1000,
+					maximum: 200000,
+					description: 'Truncate the returned content to this many characters. Default: 50000.'
+				},
+				...(caps.transcripts
+					? {
 							generate: {
 								type: 'boolean',
 								description:
@@ -243,106 +285,112 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 									'so only set this after a normal call reports no transcript is available. ' +
 									'Default: false.'
 							}
-						},
-						required: ['url'],
-						additionalProperties: false
-					}
-				},
-				{
-					name: 'find_communities',
-					description: FIND_COMMUNITIES_DESCRIPTION,
-					inputSchema: {
-						type: 'object',
-						properties: {
-							topic: {
-								type: 'string',
-								description:
-									"Keywords describing the subject, e.g. 'local llm', 'video generation'."
-							},
-							limit: {
-								type: 'integer',
-								minimum: 1,
-								maximum: 25,
-								description: 'Max communities returned. Default: 10.'
-							}
-						},
-						required: ['topic'],
-						additionalProperties: false
-					}
-				},
-				{
-					name: 'web_search',
-					description: WEB_SEARCH_DESCRIPTION,
-					inputSchema: {
-						type: 'object',
-						properties: {
-							query: {
-								type: 'string',
-								description:
-									'What you are looking for, in natural language — this engine matches meaning, ' +
-									'so a full descriptive phrase works better than bare keywords. Omit if using similar_to.'
-							},
-							similar_to: {
-								type: 'string',
-								description:
-									'A URL to find similar pages to, instead of searching by query. Results from the ' +
-									'same domain are excluded automatically. Omit if using query.'
-							},
-							time: {
-								type: 'string',
-								enum: ['day', 'week', 'month', 'year', 'all'],
-								description:
-									'Only return pages published within this window. Default: all — documentation ' +
-									'and analysis stay valid, unlike fast-decaying social discussion.'
-							},
-							limit: {
-								type: 'integer',
-								minimum: 1,
-								maximum: 25,
-								description: 'Max results. Default: 10.'
-							},
-							content: {
-								type: 'string',
-								enum: ['highlights', 'text', 'none'],
-								description:
-									'How much page content to return. "highlights" (default) gives short ' +
-									'query-relevant excerpts; "text" gives a longer extract per result and costs ' +
-									'far more context; "none" returns links only.'
-							},
-							include_domains: {
-								type: 'array',
-								items: { type: 'string' },
-								description:
-									"Only return results from these domains, e.g. ['arxiv.org', 'github.com']."
-							},
-							exclude_domains: {
-								type: 'array',
-								items: { type: 'string' },
-								description:
-									'Never return results from these domains — useful for filtering out SEO ' +
-									'content farms and vendor marketing.'
-							},
-							category: {
-								type: 'string',
-								enum: [
-									'company',
-									'news',
-									'publication',
-									'personal site',
-									'people',
-									'financial report'
-								],
-								description:
-									'Restrict to a type of page. Useful for entity-style research, e.g. category ' +
-									'"company" when looking for businesses in a space.'
-							}
-						},
-						additionalProperties: false
-					}
-				}
-			]
+						}
+					: {})
+			},
+			required: ['url'],
+			additionalProperties: false
 		}
-	};
+	});
+
+	if (caps.reddit) {
+		tools.push({
+			name: 'find_communities',
+			description: FIND_COMMUNITIES_DESCRIPTION,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					topic: {
+						type: 'string',
+						description: "Keywords describing the subject, e.g. 'local llm', 'video generation'."
+					},
+					limit: {
+						type: 'integer',
+						minimum: 1,
+						maximum: 25,
+						description: 'Max communities returned. Default: 10.'
+					}
+				},
+				required: ['topic'],
+				additionalProperties: false
+			}
+		});
+	}
+
+	if (caps.exa) {
+		tools.push({
+			name: 'web_search',
+			description: WEB_SEARCH_DESCRIPTION,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					query: {
+						type: 'string',
+						description:
+							'What you are looking for, in natural language — this engine matches meaning, ' +
+							'so a full descriptive phrase works better than bare keywords. Omit if using similar_to.'
+					},
+					similar_to: {
+						type: 'string',
+						description:
+							'A URL to find similar pages to, instead of searching by query. Results from the ' +
+							'same domain are excluded automatically. Omit if using query.'
+					},
+					time: {
+						type: 'string',
+						enum: ['day', 'week', 'month', 'year', 'all'],
+						description:
+							'Only return pages published within this window. Default: all — documentation ' +
+							'and analysis stay valid, unlike fast-decaying social discussion.'
+					},
+					limit: {
+						type: 'integer',
+						minimum: 1,
+						maximum: 25,
+						description: 'Max results. Default: 10.'
+					},
+					content: {
+						type: 'string',
+						enum: ['highlights', 'text', 'none'],
+						description:
+							'How much page content to return. "highlights" (default) gives short ' +
+							'query-relevant excerpts; "text" gives a longer extract per result and costs ' +
+							'far more context; "none" returns links only.'
+					},
+					include_domains: {
+						type: 'array',
+						items: { type: 'string' },
+						description:
+							"Only return results from these domains, e.g. ['arxiv.org', 'github.com']."
+					},
+					exclude_domains: {
+						type: 'array',
+						items: { type: 'string' },
+						description:
+							'Never return results from these domains — useful for filtering out SEO ' +
+							'content farms and vendor marketing.'
+					},
+					category: {
+						type: 'string',
+						enum: [
+							'company',
+							'news',
+							'publication',
+							'personal site',
+							'people',
+							'financial report'
+						],
+						description:
+							'Restrict to a type of page. Useful for entity-style research, e.g. category ' +
+							'"company" when looking for businesses in a space.'
+					}
+				},
+				additionalProperties: false
+			}
+		});
+	}
+
+	return { jsonrpc: '2.0', id, result: { tools } };
 }
 
 function extractId(platform: 'reddit' | 'x' | 'youtube', raw: string): string | null {
@@ -372,7 +420,19 @@ function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value
 	return typeof value === 'string' && (allowed as readonly string[]).includes(value);
 }
 
-export function validateToolCall(params: unknown): ValidatedCall {
+/** Rejects a platform this deployment has no key for, naming what to set. */
+function platformUnavailable(platform: string, caps: Capabilities): ValidatedCall | null {
+	const available = availablePlatforms(caps) as string[];
+	if (available.includes(platform)) return null;
+	return invalid(
+		`Platform '${platform}' is not configured on this server — set ${PLATFORM_ENV[platform] ?? 'its API key'} to enable it. ` +
+			(available.length
+				? `Available: ${available.join(', ')}.`
+				: 'No social platforms are currently configured.')
+	);
+}
+
+export function validateToolCall(params: unknown, caps: Capabilities): ValidatedCall {
 	const p = params as { name?: string; arguments?: Record<string, unknown> } | null | undefined;
 	const args = p?.arguments ?? {};
 
@@ -381,9 +441,27 @@ export function validateToolCall(params: unknown): ValidatedCall {
 		if (typeof query !== 'string' || !query.trim()) {
 			return invalid("'query' is required and must be a non-empty string.");
 		}
-		const platform = args.platform ?? 'both';
+		// Default to everything configured, rather than a hardcoded reddit+x that
+		// would half-fail on a partial install.
+		const available = availablePlatforms(caps);
+		if (available.length === 0) {
+			return invalid(
+				'No social platforms are configured on this server. Set REDDIT_CLIENT_ID/' +
+					'REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY or YOUTUBE_API_KEY to enable social_search.'
+			);
+		}
+		// Default to the cheap, high-volume platforms; YouTube stays opt-in because
+		// its search quota is ~90/day while Reddit and X are effectively unlimited.
+		const cheap = available.filter((p) => p !== 'youtube');
+		const defaultPlatform =
+			cheap.length === 2 ? 'both' : cheap.length === 1 ? cheap[0] : available[0];
+		const platform = args.platform ?? defaultPlatform;
 		if (!isOneOf(platform, ['reddit', 'x', 'youtube', 'both', 'all'] as const)) {
 			return invalid("'platform' must be one of: reddit, x, youtube, both, all.");
+		}
+		if (platform !== 'both' && platform !== 'all') {
+			const err = platformUnavailable(platform, caps);
+			if (err) return err;
 		}
 		const time = args.time ?? 'month';
 		if (!isOneOf(time, ['day', 'week', 'month', 'year', 'all'] as const)) {
@@ -414,6 +492,8 @@ export function validateToolCall(params: unknown): ValidatedCall {
 		if (!isOneOf(platform, ['reddit', 'x', 'youtube'] as const)) {
 			return invalid("'platform' must be 'reddit', 'x' or 'youtube'.");
 		}
+		const unavailable = platformUnavailable(platform, caps);
+		if (unavailable) return unavailable;
 		const rawId = args.id;
 		if (typeof rawId !== 'string' || !rawId.trim()) {
 			return invalid("'id' is required — a post/tweet id or full URL.");

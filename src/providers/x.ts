@@ -22,6 +22,11 @@ interface Tweet {
 }
 
 async function xGet(env: Env, path: string): Promise<unknown> {
+	if (!env.TWITTERAPI_IO_KEY) {
+		throw new ProviderError(
+			'X is not configured on this server — set TWITTERAPI_IO_KEY to enable it.'
+		);
+	}
 	await consumeBudget(env, 'x');
 	const res = await fetch(`${BASE}${path}`, {
 		headers: { 'x-api-key': env.TWITTERAPI_IO_KEY }
