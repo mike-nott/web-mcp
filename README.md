@@ -99,6 +99,16 @@ Claude Code loads MCP servers at startup — restart your session after adding. 
 - **TwitterAPI.io is a third-party service** — cheaper than the official X API by ~30x, but it's grey-market data access. The provider layer is abstracted (`src/providers/`) so you can swap in the official X API if you prefer.
 - **Privacy:** this is designed as a *private, single-user* server — one shared token, no user accounts. Don't publish your worker URL + token together.
 
+## Next steps / future development
+
+Planned or under consideration:
+
+- **FireCrawl provider** — a `fetch_page` tool for arbitrary bot-blocked pages via [FireCrawl](https://firecrawl.dev)'s cloud API, extending coverage beyond social platforms to any walled page you can name.
+- **Discord** — search across servers you're a member of. Discord has no read API for this, so the likely shape is a small local companion process (browser-driven, residential IP) rather than a worker provider — separate component, same MCP pattern.
+- More sources as the walls go up.
+
+Ideas and suggestions welcome via issues.
+
 ## License
 
 [MIT](LICENSE)
