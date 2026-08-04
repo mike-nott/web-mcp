@@ -3,7 +3,13 @@
 // can read and react to them; only schema violations are protocol errors.
 
 import type { Env } from './env';
-import type { FetchPageArgs, FindCommunitiesArgs, SearchArgs, ThreadArgs } from './mcp/handlers';
+import type {
+	FetchPageArgs,
+	FindCommunitiesArgs,
+	SearchArgs,
+	ThreadArgs,
+	WebSearchArgs
+} from './mcp/handlers';
 import {
 	cacheKey,
 	getCached,
@@ -20,6 +26,7 @@ import { youtubeSearch, youtubeThread } from './providers/youtube';
 import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
+import { exaSearch } from './providers/exa';
 
 export interface ToolResult {
 	text: string;
@@ -70,6 +77,21 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	// Cache only complete successes so a provider blip doesn't stick for an hour.
 	if (failures.length === 0) await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
 	return ok(text);
+}
+
+export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolResult> {
+	const key = await cacheKey('web', { ...args });
+	const cached = await getCached(env.KV, key);
+	if (cached) return ok(cached);
+
+	try {
+		const { results, costUsd } = await exaSearch(env, args);
+		const text = JSON.stringify({ results, cost_usd: costUsd }, null, 1);
+		await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
+		return ok(text);
+	} catch (err) {
+		return fail(err, 'web_search failed');
+	}
 }
 
 export async function runFindCommunities(

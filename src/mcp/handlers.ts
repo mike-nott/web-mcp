@@ -33,11 +33,23 @@ export interface FindCommunitiesArgs {
 	limit: number;
 }
 
+export interface WebSearchArgs {
+	query?: string;
+	similarTo?: string;
+	time: string;
+	limit: number;
+	content: 'highlights' | 'text' | 'none';
+	includeDomains?: string[];
+	excludeDomains?: string[];
+	category?: string;
+}
+
 export type ValidatedCall =
 	| { ok: true; tool: 'social_search'; args: SearchArgs }
 	| { ok: true; tool: 'get_thread'; args: ThreadArgs }
 	| { ok: true; tool: 'fetch_page'; args: FetchPageArgs }
 	| { ok: true; tool: 'find_communities'; args: FindCommunitiesArgs }
+	| { ok: true; tool: 'web_search'; args: WebSearchArgs }
 	| { ok: false; code: number; message: string };
 
 export function handleInitialize(id: string | number | null): JsonRpcResponse {
@@ -104,6 +116,20 @@ const FIND_COMMUNITIES_DESCRIPTION =
 	'is not always the most specialised — a 30k-member niche subreddit often has better practitioner ' +
 	'depth than a 20M general one. Matches on both names and descriptions, so expect some unrelated ' +
 	'results and judge by the description. Reddit only. Cached for 24 hours.';
+
+const WEB_SEARCH_DESCRIPTION =
+	'Semantic (neural) search over the open web, plus find-similar. Unlike social_search — and unlike ' +
+	'most search engines — this matches MEANING, not keywords, so describe what you want in natural ' +
+	'language and it works: "startups building on-device inference for robotics", "essays arguing ' +
+	'against microservices". The exact words need not appear on the page. ' +
+	'WHEN TO USE THIS over your own built-in web search: descriptive or conceptual queries where you ' +
+	'cannot name the right keywords; finding more pages like one you already have (similar_to); ' +
+	'research that should be restricted to or exclude particular domains; and when you want page ' +
+	'excerpts back in the same call instead of searching and then fetching each result. ' +
+	'WHEN NOT TO: quick factual lookups and breaking news — your own web search is faster and free ' +
+	'for those. This is also NOT for reading a specific known URL; use fetch_page for that. ' +
+	'Provide exactly one of query or similar_to. Returns title, url, date, author and query-relevant ' +
+	'highlights, plus the real cost of the call in cost_usd. Cached for 1 hour.';
 
 export function handleToolsList(id: string | number | null): JsonRpcResponse {
 	return {
@@ -243,6 +269,76 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 						required: ['topic'],
 						additionalProperties: false
 					}
+				},
+				{
+					name: 'web_search',
+					description: WEB_SEARCH_DESCRIPTION,
+					inputSchema: {
+						type: 'object',
+						properties: {
+							query: {
+								type: 'string',
+								description:
+									'What you are looking for, in natural language — this engine matches meaning, ' +
+									'so a full descriptive phrase works better than bare keywords. Omit if using similar_to.'
+							},
+							similar_to: {
+								type: 'string',
+								description:
+									'A URL to find similar pages to, instead of searching by query. Results from the ' +
+									'same domain are excluded automatically. Omit if using query.'
+							},
+							time: {
+								type: 'string',
+								enum: ['day', 'week', 'month', 'year', 'all'],
+								description:
+									'Only return pages published within this window. Default: all — documentation ' +
+									'and analysis stay valid, unlike fast-decaying social discussion.'
+							},
+							limit: {
+								type: 'integer',
+								minimum: 1,
+								maximum: 25,
+								description: 'Max results. Default: 10.'
+							},
+							content: {
+								type: 'string',
+								enum: ['highlights', 'text', 'none'],
+								description:
+									'How much page content to return. "highlights" (default) gives short ' +
+									'query-relevant excerpts; "text" gives a longer extract per result and costs ' +
+									'far more context; "none" returns links only.'
+							},
+							include_domains: {
+								type: 'array',
+								items: { type: 'string' },
+								description:
+									"Only return results from these domains, e.g. ['arxiv.org', 'github.com']."
+							},
+							exclude_domains: {
+								type: 'array',
+								items: { type: 'string' },
+								description:
+									'Never return results from these domains — useful for filtering out SEO ' +
+									'content farms and vendor marketing.'
+							},
+							category: {
+								type: 'string',
+								enum: [
+									'company',
+									'news',
+									'publication',
+									'personal site',
+									'people',
+									'financial report'
+								],
+								description:
+									'Restrict to a type of page. Useful for entity-style research, e.g. category ' +
+									'"company" when looking for businesses in a space.'
+							}
+						},
+						additionalProperties: false
+					}
 				}
 			]
 		}
@@ -374,9 +470,72 @@ export function validateToolCall(params: unknown): ValidatedCall {
 		return { ok: true, tool: 'find_communities', args: { topic: topic.trim(), limit } };
 	}
 
+	if (p?.name === 'web_search') {
+		const query = args.query;
+		const similarTo = args.similar_to;
+		const hasQuery = typeof query === 'string' && query.trim().length > 0;
+		const hasSimilar = typeof similarTo === 'string' && similarTo.trim().length > 0;
+		if (hasQuery === hasSimilar) {
+			return invalid(
+				hasQuery
+					? "Provide either 'query' or 'similar_to', not both."
+					: "One of 'query' or 'similar_to' is required."
+			);
+		}
+		if (hasSimilar) {
+			try {
+				new URL(similarTo as string);
+			} catch {
+				return invalid("'similar_to' must be a valid URL.");
+			}
+		}
+		const time = args.time ?? 'all';
+		if (!isOneOf(time, ['day', 'week', 'month', 'year', 'all'] as const)) {
+			return invalid("'time' must be one of: day, week, month, year, all.");
+		}
+		const content = args.content ?? 'highlights';
+		if (!isOneOf(content, ['highlights', 'text', 'none'] as const)) {
+			return invalid("'content' must be one of: highlights, text, none.");
+		}
+		const category = args.category;
+		if (category !== undefined && typeof category !== 'string') {
+			return invalid("'category' must be a string.");
+		}
+		const domains = (value: unknown, name: string): string[] | undefined | { error: string } => {
+			if (value === undefined) return undefined;
+			if (!Array.isArray(value) || value.some((d) => typeof d !== 'string')) {
+				return { error: `'${name}' must be an array of domain strings.` };
+			}
+			return value as string[];
+		};
+		const include = domains(args.include_domains, 'include_domains');
+		if (include && !Array.isArray(include)) return invalid(include.error);
+		const exclude = domains(args.exclude_domains, 'exclude_domains');
+		if (exclude && !Array.isArray(exclude)) return invalid(exclude.error);
+
+		const rawLimit = args.limit ?? 10;
+		if (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit)) {
+			return invalid("'limit' must be a number between 1 and 25.");
+		}
+		return {
+			ok: true,
+			tool: 'web_search',
+			args: {
+				...(hasQuery ? { query: (query as string).trim() } : {}),
+				...(hasSimilar ? { similarTo: (similarTo as string).trim() } : {}),
+				time,
+				limit: Math.max(1, Math.min(25, Math.floor(rawLimit))),
+				content,
+				...(Array.isArray(include) ? { includeDomains: include } : {}),
+				...(Array.isArray(exclude) ? { excludeDomains: exclude } : {}),
+				...(category ? { category } : {})
+			}
+		};
+	}
+
 	return {
 		ok: false,
 		code: MCP_ERROR_CODES.METHOD_NOT_FOUND,
-		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread', 'fetch_page' and 'find_communities'.`
+		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread', 'fetch_page', 'find_communities' and 'web_search'.`
 	};
 }

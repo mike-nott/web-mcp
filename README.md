@@ -12,6 +12,7 @@ Deploy it once to your own Cloudflare account, register one URL + bearer token i
 | `social_search` | Search Reddit / X / YouTube — time windows, native search operators, engagement signals (scores, views, comment counts, authors, dates) |
 | `get_thread` | Pull a scored comment/reply tree for any post, tweet or video (bare id or URL) |
 | `fetch_page` | Read pages behind bot protection, JS-rendered shells, PDFs — and video transcripts |
+| `web_search` | Semantic (neural) search over the open web, plus find-similar-by-URL |
 
 The intended research chain:
 
@@ -30,6 +31,7 @@ Agent session ──MCP (Streamable HTTP + bearer token)──▶ Worker ──�
                                                           │        YouTube Data API (free, quota-capped)
                                                           │        FireCrawl (1–5 credits/page)
                                                           │        Supadata (1 credit/transcript)
+                                                          │        Exa (semantic search, ~$0.007/call)
                                                           ▼
                                                     Workers KV: sessions, response cache,
                                                     reddit token, transcript jobs, daily budgets
@@ -82,7 +84,13 @@ For `platform: "youtube"` search and video transcripts:
 
 Note the quota asymmetry: YouTube *search* is capped at ~100 calls/day in its own bucket, while video metadata and comments cost 1 unit against a separate 10,000/day pool. Only search is scarce, and only search is counted by this server's budget.
 
-### 5. Generate your bearer token
+### 5. Exa key (optional, for `web_search`)
+
+From [dashboard.exa.ai](https://dashboard.exa.ai). Exa is *semantic* search — it matches meaning rather than keywords, so descriptive queries work where a keyword index needs the exact words to appear. It also does find-similar-by-URL, which nothing else here can do.
+
+This complements rather than replaces your MCP client's own web search: use `web_search` for conceptual queries, domain-filtered research, find-similar, or when you want page excerpts in the same call; use the client's built-in search for quick factual lookups and breaking news.
+
+### 6. Generate your bearer token
 
 ```bash
 echo "webmcp_$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')"
@@ -90,7 +98,7 @@ echo "webmcp_$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')"
 
 Keep it somewhere safe — it's the only key your MCP clients need.
 
-### 6. Local dev (optional)
+### 7. Local dev (optional)
 
 ```bash
 npm install
@@ -102,12 +110,13 @@ TWITTERAPI_IO_KEY=<from step 2>
 FIRECRAWL_API_KEY=<from step 3, optional>
 YOUTUBE_API_KEY=<from step 4, optional>
 SUPADATA_API_KEY=<from step 4, optional>
+EXA_API_KEY=<from step 5, optional>
 EOF
 npm run dev        # serves http://localhost:8787/mcp
 npm run typecheck
 ```
 
-### 7. Deploy to your Cloudflare account
+### 8. Deploy to your Cloudflare account
 
 ```bash
 # find your account id: npx wrangler whoami
@@ -123,13 +132,14 @@ echo "<value>" | npx wrangler secret put TWITTERAPI_IO_KEY
 echo "<value>" | npx wrangler secret put FIRECRAWL_API_KEY   # optional
 echo "<value>" | npx wrangler secret put YOUTUBE_API_KEY     # optional
 echo "<value>" | npx wrangler secret put SUPADATA_API_KEY    # optional
+echo "<value>" | npx wrangler secret put EXA_API_KEY         # optional
 
 npm run deploy
 ```
 
 The free Workers plan is fine — this fits comfortably inside its limits for personal use.
 
-### 8. Register in your MCP client
+### 9. Register in your MCP client
 
 ```bash
 claude mcp add --transport http --scope user web-mcp https://web-mcp.<your-subdomain>.workers.dev/mcp \

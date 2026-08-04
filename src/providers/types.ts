@@ -37,6 +37,20 @@ export interface Thread extends SearchResult {
 	note?: string;
 }
 
+/**
+ * An open-web result. Deliberately NOT a SearchResult: pages carry no
+ * engagement signals, and inventing a score/comment count would mislead the
+ * calling model into weighing them like community-endorsed posts.
+ */
+export interface WebResult {
+	title: string;
+	url: string;
+	published?: string;
+	author?: string;
+	highlights?: string[];
+	text?: string;
+}
+
 export interface ScrapedPage {
 	finalUrl: string;
 	title: string;
