@@ -2,7 +2,7 @@
 #
 # Secrets (set once with `echo "value" | wrangler secret put NAME`):
 #   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY,
-#   FIRECRAWL_API_KEY
+#   FIRECRAWL_API_KEY, YOUTUBE_API_KEY, SUPADATA_API_KEY
 # Local dev reads the same names from .dev.vars (gitignored).
 # Deploying? See README — replace the KV namespace id below with your own.
 
@@ -14,6 +14,15 @@ compatibility_date = "2026-08-01"
 REDDIT_USER_AGENT = "cf-worker:web-mcp:v1 (contact: mike@nott.org)"
 X_DAILY_CALL_LIMIT = "500"
 FIRECRAWL_DAILY_CALL_LIMIT = "200"
+# Google caps YouTube search at ~100/day in its own bucket; 90 leaves headroom.
+# Video metadata and comments are 1 unit each against a separate 10,000/day pool
+# and are deliberately not counted here.
+YOUTUBE_SEARCH_DAILY_LIMIT = "90"
+# Runaway backstop only — set well above normal use. A Supadata Pro plan is
+# 3,000 credits/month, so this never binds in practice; set to "0" to disable.
+# Worth keeping because generate:true bills per MINUTE of video (a 60-minute
+# talk is ~120 credits), so one bad loop could eat a month's plan.
+SUPADATA_DAILY_LIMIT = "300"
 
 [[kv_namespaces]]
 binding = "KV"

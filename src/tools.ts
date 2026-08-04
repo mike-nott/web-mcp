@@ -14,10 +14,12 @@ import {
 	THREAD_CACHE_TTL
 } from './cache';
 import { redditFindCommunities, redditSearch, redditThread } from './providers/reddit';
-import type { SearchResult } from './providers/reddit';
+import type { SearchResult } from './providers/types';
 import { xSearch, xThread } from './providers/x';
+import { youtubeSearch, youtubeThread } from './providers/youtube';
 import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
+import { fetchTranscript, isVideoUrl } from './providers/transcript';
 
 export interface ToolResult {
 	text: string;
@@ -38,13 +40,13 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	const cached = await getCached(env.KV, key);
 	if (cached) return ok(cached);
 
+	const wants = (p: string): boolean =>
+		args.platform === p || args.platform === 'all' || (args.platform === 'both' && p !== 'youtube');
+
 	const tasks: Array<{ platform: string; run: Promise<SearchResult[]> }> = [];
-	if (args.platform === 'reddit' || args.platform === 'both') {
-		tasks.push({ platform: 'reddit', run: redditSearch(env, args) });
-	}
-	if (args.platform === 'x' || args.platform === 'both') {
-		tasks.push({ platform: 'x', run: xSearch(env, args) });
-	}
+	if (wants('reddit')) tasks.push({ platform: 'reddit', run: redditSearch(env, args) });
+	if (wants('x')) tasks.push({ platform: 'x', run: xSearch(env, args) });
+	if (wants('youtube')) tasks.push({ platform: 'youtube', run: youtubeSearch(env, args) });
 
 	const settled = await Promise.allSettled(tasks.map((t) => t.run));
 	const results: SearchResult[] = [];
@@ -95,11 +97,21 @@ export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolR
 
 	try {
 		const url = assertPublicHttpsUrl(args.url);
-		// Tier 1 is free; it returns null whenever the page looks blocked, empty,
-		// or non-HTML, which is the signal to spend a FireCrawl credit.
-		const direct = await directFetch(url);
-		const page = direct ?? (await firecrawlScrape(env, url.toString()));
-		const tier = direct ? 'direct' : 'firecrawl';
+
+		// A video's content is its transcript, not its player page — checked before
+		// the HTML tiers, which would only return chrome.
+		let page;
+		let tier: string;
+		if (isVideoUrl(url)) {
+			page = await fetchTranscript(env, url.toString(), { generate: args.generate });
+			tier = 'transcript';
+		} else {
+			// Tier 1 is free; it returns null whenever the page looks blocked, empty,
+			// or non-HTML, which is the signal to spend a FireCrawl credit.
+			const direct = await directFetch(url);
+			page = direct ?? (await firecrawlScrape(env, url.toString()));
+			tier = direct ? 'direct' : 'firecrawl';
+		}
 
 		const truncated = page.content.length > args.maxChars;
 		const payload = {
@@ -127,7 +139,11 @@ export async function runGetThread(env: Env, args: ThreadArgs): Promise<ToolResu
 
 	try {
 		const thread =
-			args.platform === 'reddit' ? await redditThread(env, args) : await xThread(env, args);
+			args.platform === 'reddit'
+				? await redditThread(env, args)
+				: args.platform === 'youtube'
+					? await youtubeThread(env, args)
+					: await xThread(env, args);
 		const text = JSON.stringify(thread, null, 1);
 		if (!thread.note) await putCached(env.KV, key, text, THREAD_CACHE_TTL);
 		return ok(text);

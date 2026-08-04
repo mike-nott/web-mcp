@@ -1,0 +1,46 @@
+// Shared provider shapes. Every platform normalises into these, so the calling
+// model sees one consistent structure regardless of source — and the engagement
+// signals (score, comments, date) survive intact for it to weigh.
+
+export type Platform = 'reddit' | 'x' | 'youtube';
+
+export interface SearchResult {
+	platform: Platform;
+	id: string;
+	title?: string;
+	text: string;
+	/** Upvotes on Reddit, likes on X and YouTube. */
+	score: number;
+	/** Comment count on Reddit/YouTube, reply count on X. */
+	comments: number;
+	/** u/user, @handle, or channel name. */
+	author: string;
+	date: string;
+	url: string;
+	/** Subreddit on Reddit, channel on YouTube; absent for X. */
+	community?: string;
+	/** Views — YouTube only; the other platforms don't expose it. */
+	views?: number;
+}
+
+export interface ThreadComment {
+	score: number;
+	author: string;
+	date: string;
+	/** Nesting level. Reddit nests; X replies and YouTube top-level comments are flat (0). */
+	depth: number;
+	text: string;
+}
+
+export interface Thread extends SearchResult {
+	replies: ThreadComment[];
+	note?: string;
+}
+
+export interface ScrapedPage {
+	finalUrl: string;
+	title: string;
+	status: number;
+	content: string;
+	note?: string;
+}

@@ -5,44 +5,10 @@
 
 import type { Env } from '../env';
 import { ProviderError } from './errors';
+import type { SearchResult, Thread, ThreadComment } from './types';
 
 const TOKEN_KEY = 'reddit:token';
 const TOKEN_TTL_SECONDS = 3300; // Reddit tokens last 60min; refresh at 55
-
-export interface SearchResult {
-	platform: 'reddit' | 'x';
-	id: string;
-	title?: string;
-	text: string;
-	score: number;
-	comments: number;
-	author: string;
-	date: string;
-	url: string;
-	community?: string;
-}
-
-export interface ThreadComment {
-	score: number;
-	author: string;
-	date: string;
-	depth: number;
-	text: string;
-}
-
-export interface Thread {
-	platform: 'reddit' | 'x';
-	id: string;
-	title?: string;
-	text: string;
-	score: number;
-	comments: number;
-	author: string;
-	date: string;
-	url: string;
-	replies: ThreadComment[];
-	note?: string;
-}
 
 async function getToken(env: Env): Promise<string> {
 	const cached = await env.KV.get(TOKEN_KEY);

@@ -6,7 +6,7 @@
 import type { Env } from '../env';
 import { consumeBudget } from '../budget';
 import { ProviderError } from './errors';
-import type { SearchResult, Thread, ThreadComment } from './reddit';
+import type { SearchResult, Thread, ThreadComment } from './types';
 
 const BASE = 'https://api.twitterapi.io';
 

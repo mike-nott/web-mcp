@@ -13,6 +13,7 @@
 import type { Env } from '../env';
 import { consumeBudget } from '../budget';
 import { ProviderError } from './errors';
+import type { ScrapedPage } from './types';
 
 const API_BASE = 'https://api.firecrawl.dev/v2';
 const SCRAPE_TIMEOUT_MS = 30000; // stays inside MCP client tool timeouts (no SSE keepalive)
@@ -36,13 +37,7 @@ const WALL_MARKERS = [
 	'captcha'
 ];
 
-export interface ScrapedPage {
-	finalUrl: string;
-	title: string;
-	status: number;
-	content: string;
-	note?: string;
-}
+export type { ScrapedPage } from './types';
 
 interface FirecrawlResponse {
 	success?: boolean;

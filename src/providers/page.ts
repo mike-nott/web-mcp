@@ -6,7 +6,7 @@
 // failure mode this tool exists to prevent.
 
 import { ProviderError } from './errors';
-import type { ScrapedPage } from './firecrawl';
+import type { ScrapedPage } from './types';
 
 const FETCH_TIMEOUT_MS = 12000;
 // Real articles and docs pages essentially always clear this; anything shorter
