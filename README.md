@@ -41,22 +41,31 @@ That's information that doesn't exist in any search index, and none of it needed
 
 ---
 
-## Providers — pick what you want, skip the rest
+## Start free — three keys, no card, most of the capability
 
-**`MCP_AUTH_TOKEN` is the only required secret.** Every source below is independent. Set the keys you want; the server detects what's configured and **only advertises tools that actually work** — your agent is never offered something it can't use.
+These three cost **nothing**, ever:
+
+| Provider | Unlocks | Free allowance |
+|---|---|---|
+| **Reddit** | Post search, scored comment trees, subreddit discovery | Unlimited (1,000 req/10min) |
+| **YouTube** | Video search, comments, view/like signals | ~100 searches/day |
+| **Tavily** | Keyword web search — everyday lookups | 1,000 credits/month |
+
+**Stop there and you already have:** community discovery · Reddit + YouTube search with engagement signals · full scored comment threads · keyword web search · and page fetching for every site that isn't actively blocking you.
+
+That's four of the five tools working, for £0.
+
+### Then add what you actually need
 
 | Provider | Unlocks | Cost |
 |---|---|---|
-| **Reddit** | Post search, scored comment trees, subreddit discovery | **Free** |
-| **YouTube** | Video search, comments, view/like signals | **Free** (~100 searches/day) |
-| **Tavily** | Keyword web search — the everyday lookups | **1,000/month free**, then $0.008 |
-| **Exa** | Semantic search — finds pages whose keywords you can't guess, plus find-similar | ~$0.007/call |
 | **FireCrawl** | Reads bot-protected pages and PDFs | 1–5 credits, **only when blocked** |
 | **Supadata** | Video transcripts (YouTube, TikTok, Instagram, X) | 1 credit each |
+| **Exa** | Semantic search — finds pages whose keywords you can't guess, plus find-similar | ~$0.007/call |
 | **TwitterAPI.io** | X search and reply threads | ~$0.15/1k tweets |
 | **Brave** | Keyword search with an independent index + publication dates | ~$5/1k, no free tier |
 
-> **The free build is genuinely good.** Reddit + YouTube + Tavily costs **nothing** and still gives you community discovery, social search, comment threads, video comments, keyword web search and page fetching.
+**`MCP_AUTH_TOKEN` is the only required secret.** Every source is independent, and the server **only advertises tools whose providers are configured** — your agent is never offered something it can't use, and never discovers that by failing.
 
 ---
 
@@ -117,13 +126,7 @@ flowchart LR
 
 Their indexes are largely disjoint, so recall roughly doubles. Every result lists which `engines` found it — cross-index agreement is handed to your model as a signal, not baked into a ranking here.
 
-### Under the hood
-
-- Hand-rolled JSON-RPC 2.0 over Streamable HTTP — the official MCP SDK has Node-only deps and won't run on Workers
-- KV response cache: searches 1h, threads 15min, pages 1h, communities 24h
-- Per-provider daily spend ceilings, returning a readable message rather than crashing. Set any to `0` to disable
-- Reddit via official app-only OAuth — the sanctioned path for datacenter traffic — with descriptive UA and rate-header backoff
-- SSRF guard: non-public hosts rejected before any fetch
+Everything is cached in KV and every paid provider has a daily spend ceiling that fails with a readable message rather than a surprise bill.
 
 ---
 
