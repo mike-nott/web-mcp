@@ -115,7 +115,7 @@ Note the quota asymmetry: YouTube *search* is capped at ~100 calls/day in its ow
   | Published dates | No | Yes |
   | Index | Aggregated | Own independent index |
 
-  The `engine` field on every keyword result says which one served it.
+  Set `KEYWORD_SEARCH_PROVIDER=both` to query them in parallel and merge. The indexes are largely disjoint, so you get better recall — and where they do overlap, the merged result carries **Brave's publication date and Tavily's page text on the same URL**, which neither engine returns alone. Every result lists the `engines` that found it, so agreement across two independent indexes is visible to the calling model as a quality signal. The cost: each search consumes a query on both engines, so Tavily's free tier no longer covers usage — which is why `auto` remains the default.
 - **`semantic` — [Exa](https://dashboard.exa.ai)**. Matches meaning rather than keywords, so descriptive queries work where a keyword index needs the exact words to appear. Also does find-similar-by-URL, which nothing else here can do.
 
 They're genuinely complementary: semantic search is measurably weaker at plain factual lookups, and keyword search can't find a page whose vocabulary you can't guess. With both configured, `keyword` is the default and `semantic` is the deliberate choice.

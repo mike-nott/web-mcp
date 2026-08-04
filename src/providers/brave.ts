@@ -130,5 +130,5 @@ export async function braveSearch(env: Env, args: KeywordArgs): Promise<KeywordR
 		};
 	});
 
-	return { results, notes, engine: 'brave' };
+	return { results, notes, engines: ['brave'] };
 }

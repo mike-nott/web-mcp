@@ -27,7 +27,7 @@ import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
 import { exaSearch } from './providers/exa';
-import { keywordSearch, resolveKeywordEngine } from './providers/keyword';
+import { keywordSearch, resolveKeywordEngines } from './providers/keyword';
 
 export interface ToolResult {
 	text: string;
@@ -84,14 +84,15 @@ export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolR
 	// The engine is part of the key: without it, flipping KEYWORD_SEARCH_PROVIDER
 	// would serve the previous engine's cached results for an hour, which defeats
 	// the point of being able to switch.
-	const engineKey = args.mode === 'keyword' ? (resolveKeywordEngine(env) ?? 'none') : 'exa';
+	const engineKey =
+		args.mode === 'keyword' ? (resolveKeywordEngines(env).join('+') || 'none') : 'exa';
 	const key = await cacheKey('web', { ...args, engine: engineKey });
 	const cached = await getCached(env.KV, key);
 	if (cached) return ok(cached);
 
 	try {
 		if (args.mode === 'keyword') {
-			const { results, notes, engine, creditsUsed } = await keywordSearch(env, {
+			const { results, notes, engines, creditsUsed } = await keywordSearch(env, {
 				query: args.query ?? '',
 				time: args.time,
 				limit: args.limit,
@@ -106,7 +107,7 @@ export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolR
 			const text = JSON.stringify(
 				{
 					mode: 'keyword',
-					engine,
+					engines,
 					results,
 					...(creditsUsed !== undefined ? { credits_used: creditsUsed } : {}),
 					...(allNotes.length ? { note: allNotes.join(' ') } : {})

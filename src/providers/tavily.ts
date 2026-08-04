@@ -105,5 +105,5 @@ export async function tavilySearch(env: Env, args: KeywordArgs): Promise<Keyword
 		};
 	});
 
-	return { results, notes, engine: 'tavily', creditsUsed: data.usage?.credits };
+	return { results, notes, engines: ['tavily'], creditsUsed: data.usage?.credits };
 }

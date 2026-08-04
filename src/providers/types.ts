@@ -49,6 +49,13 @@ export interface WebResult {
 	author?: string;
 	highlights?: string[];
 	text?: string;
+	/**
+	 * Which keyword engines returned this result. Present only when more than
+	 * one engine was queried — agreement across two independent indexes is a
+	 * signal, reported as fact for the caller to weigh rather than baked into
+	 * an ordering here.
+	 */
+	engines?: string[];
 }
 
 /** Shared contract for keyword search engines (Brave, Tavily). */
@@ -65,8 +72,8 @@ export interface KeywordResponse {
 	results: WebResult[];
 	/** Caveats worth passing to the caller (clamped limits, unsupported options). */
 	notes: string[];
-	/** Which engine served this, for transparency. */
-	engine: 'brave' | 'tavily';
+	/** Which engines were queried, for transparency. */
+	engines: Array<'brave' | 'tavily'>;
 	/** Credits consumed, if the engine reports them. Neither currently does. */
 	creditsUsed?: number;
 }

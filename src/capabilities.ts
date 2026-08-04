@@ -5,7 +5,7 @@
 // tools/list response, so a client is never offered a tool that cannot work.
 
 import type { Env } from './env';
-import { resolveKeywordEngine } from './providers/keyword';
+import { resolveKeywordEngines } from './providers/keyword';
 
 export interface Capabilities {
 	reddit: boolean;
@@ -42,7 +42,7 @@ export function detectCapabilities(env: Env): Capabilities {
 		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
 		// missing means keyword search is genuinely unavailable, not silently
 		// served by the other one.
-		keyword: resolveKeywordEngine(env) !== null
+		keyword: resolveKeywordEngines(env).length > 0
 	};
 }
 
