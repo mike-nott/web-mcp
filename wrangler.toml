@@ -1,0 +1,21 @@
+# web-mcp — thin MCP server for walled web content (Reddit, X).
+# Deploys to the Nott account (258b070a59a9d28eee9b778148f4b743) via `npm run deploy`.
+#
+# Secrets (set once per environment with:
+#   echo "value" | CLOUDFLARE_ACCOUNT_ID=258b070a59a9d28eee9b778148f4b743 wrangler secret put NAME):
+#   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY
+# Local dev reads the same names from .dev.vars (gitignored).
+
+name = "web-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[vars]
+REDDIT_USER_AGENT = "cf-worker:web-mcp:v1 (contact: mike@nott.org)"
+X_DAILY_CALL_LIMIT = "500"
+
+[[kv_namespaces]]
+binding = "KV"
+# Deploy step: create with `wrangler kv namespace create KV` on the Nott account
+# and paste the returned id here. Local `wrangler dev` simulates KV and ignores it.
+id = "web-mcp-kv-created-at-deploy"
