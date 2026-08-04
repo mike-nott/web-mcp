@@ -28,11 +28,12 @@ EXA_DAILY_CALL_LIMIT = "200"
 BRAVE_DAILY_CALL_LIMIT = "500"
 TAVILY_DAILY_LIMIT = "500"
 # Which engine backs web_search mode "keyword": auto | tavily | brave | both.
-# "auto" prefers Tavily (the only one with a free tier), falling back to Brave.
-# "both" queries them in parallel and merges — better recall, and a URL found by
-# both carries Brave's publication date AND Tavily's page text. Costs a query on
-# each engine per search, so Tavily's free tier no longer covers usage.
-KEYWORD_SEARCH_PROVIDER = "auto"
+# "both" queries them in parallel and merges: the indexes are largely disjoint
+# so recall roughly doubles, and a URL found by both carries Brave's publication
+# date AND Tavily's page text — which neither returns alone. It costs a query on
+# each engine per search, so Tavily's free tier alone will not cover usage.
+# Switch to "auto" (Tavily first, Brave fallback) to run on the free tier.
+KEYWORD_SEARCH_PROVIDER = "both"
 
 [[kv_namespaces]]
 binding = "KV"
