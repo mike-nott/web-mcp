@@ -14,7 +14,10 @@ export interface Capabilities {
 	transcripts: boolean;
 	/** Escalation for bot-protected pages via FireCrawl. */
 	firecrawl: boolean;
+	/** Semantic search + find-similar. */
 	exa: boolean;
+	/** Keyword web search. */
+	brave: boolean;
 }
 
 /** Treats empty/whitespace as unset, so a blank var behaves like a missing one. */
@@ -29,8 +32,17 @@ export function detectCapabilities(env: Env): Capabilities {
 		youtube: set(env.YOUTUBE_API_KEY),
 		transcripts: set(env.SUPADATA_API_KEY),
 		firecrawl: set(env.FIRECRAWL_API_KEY),
-		exa: set(env.EXA_API_KEY)
+		exa: set(env.EXA_API_KEY),
+		brave: set(env.BRAVE_API_KEY)
 	};
+}
+
+/** Search modes available on web_search, in default-preference order. */
+export function availableSearchModes(caps: Capabilities): Array<'keyword' | 'semantic'> {
+	const modes: Array<'keyword' | 'semantic'> = [];
+	if (caps.brave) modes.push('keyword');
+	if (caps.exa) modes.push('semantic');
+	return modes;
 }
 
 /** Social platforms available for search/threads, in preference order. */

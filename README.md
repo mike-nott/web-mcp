@@ -12,7 +12,7 @@ Deploy it once to your own Cloudflare account, register one URL + bearer token i
 | `social_search` | Search Reddit / X / YouTube — time windows, native search operators, engagement signals (scores, views, comment counts, authors, dates) |
 | `get_thread` | Pull a scored comment/reply tree for any post, tweet or video (bare id or URL) |
 | `fetch_page` | Read pages behind bot protection, JS-rendered shells, PDFs — and video transcripts |
-| `web_search` | Semantic (neural) search over the open web, plus find-similar-by-URL |
+| `web_search` | Web search in two modes — `keyword` (ordinary search) and `semantic` (meaning-based, plus find-similar-by-URL) |
 
 The intended research chain:
 
@@ -68,7 +68,8 @@ The `tier` field in the response says which path served it. Crucially, a page th
 | `YOUTUBE_API_KEY` | YouTube in `social_search`/`get_thread` | Free (~100 searches/day) |
 | `SUPADATA_API_KEY` | Video transcripts via `fetch_page` | 1 credit/transcript |
 | `FIRECRAWL_API_KEY` | `fetch_page` escalation past bot protection, plus PDFs | 1–5 credits, only when blocked |
-| `EXA_API_KEY` | `web_search` — semantic search and find-similar | ~$0.007/call |
+| `BRAVE_API_KEY` | `web_search` keyword mode — an ordinary search engine | ~$5/1k queries (no free tier since Feb 2026) |
+| `EXA_API_KEY` | `web_search` semantic mode — meaning-based search and find-similar | ~$0.007/call |
 
 A Reddit-only install, for example, exposes exactly `social_search` (Reddit only), `get_thread`, `find_communities` and `fetch_page` — `web_search` simply isn't there. Ask for something unconfigured and the error names the variable to set.
 
@@ -100,11 +101,14 @@ For `platform: "youtube"` search and video transcripts:
 
 Note the quota asymmetry: YouTube *search* is capped at ~100 calls/day in its own bucket, while video metadata and comments cost 1 unit against a separate 10,000/day pool. Only search is scarce, and only search is counted by this server's budget.
 
-### 5. Exa key (optional, for `web_search`)
+### 5. Web search keys (optional, for `web_search`)
 
-From [dashboard.exa.ai](https://dashboard.exa.ai). Exa is *semantic* search — it matches meaning rather than keywords, so descriptive queries work where a keyword index needs the exact words to appear. It also does find-similar-by-URL, which nothing else here can do.
+`web_search` has two modes, each backed by its own provider. Configure either or both.
 
-This complements rather than replaces your MCP client's own web search: use `web_search` for conceptual queries, domain-filtered research, find-similar, or when you want page excerpts in the same call; use the client's built-in search for quick factual lookups and breaking news.
+- **`keyword` — [Brave Search API](https://api-dashboard.search.brave.com)**. An ordinary search engine over Brave's own independent index (not Google, not Bing), good at factual lookups, news, versions and dates. **This is the mode to configure if your MCP client has no web search of its own** — a local LLM, for instance. Note Brave removed its free tier in February 2026; it's now metered at roughly $5/1k queries with about $5/month of credits.
+- **`semantic` — [Exa](https://dashboard.exa.ai)**. Matches meaning rather than keywords, so descriptive queries work where a keyword index needs the exact words to appear. Also does find-similar-by-URL, which nothing else here can do.
+
+They're genuinely complementary: semantic search is measurably weaker at plain factual lookups, and keyword search can't find a page whose vocabulary you can't guess. With both configured, `keyword` is the default and `semantic` is the deliberate choice.
 
 ### 6. Generate your bearer token
 
@@ -127,6 +131,7 @@ FIRECRAWL_API_KEY=<from step 3, optional>
 YOUTUBE_API_KEY=<from step 4, optional>
 SUPADATA_API_KEY=<from step 4, optional>
 EXA_API_KEY=<from step 5, optional>
+BRAVE_API_KEY=<from step 5, optional>
 EOF
 npm run dev        # serves http://localhost:8787/mcp
 npm run typecheck
@@ -149,6 +154,7 @@ echo "<value>" | npx wrangler secret put FIRECRAWL_API_KEY   # optional
 echo "<value>" | npx wrangler secret put YOUTUBE_API_KEY     # optional
 echo "<value>" | npx wrangler secret put SUPADATA_API_KEY    # optional
 echo "<value>" | npx wrangler secret put EXA_API_KEY         # optional
+echo "<value>" | npx wrangler secret put BRAVE_API_KEY       # optional
 
 npm run deploy
 ```

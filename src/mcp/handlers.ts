@@ -6,7 +6,7 @@ import type { JsonRpcResponse } from './types';
 import { MCP_PROTOCOL_VERSION } from './types';
 import { MCP_ERROR_CODES } from './errors';
 import type { Capabilities } from '../capabilities';
-import { availablePlatforms } from '../capabilities';
+import { availablePlatforms, availableSearchModes } from '../capabilities';
 
 /** Names the env var a user must set to unlock each platform. */
 const PLATFORM_ENV: Record<string, string> = {
@@ -43,6 +43,7 @@ export interface FindCommunitiesArgs {
 }
 
 export interface WebSearchArgs {
+	mode: 'keyword' | 'semantic';
 	query?: string;
 	similarTo?: string;
 	time: string;
@@ -144,19 +145,44 @@ const FIND_COMMUNITIES_DESCRIPTION =
 	'depth than a 20M general one. Matches on both names and descriptions, so expect some unrelated ' +
 	'results and judge by the description. Reddit only. Cached for 24 hours.';
 
-const WEB_SEARCH_DESCRIPTION =
-	'Semantic (neural) search over the open web, plus find-similar. Unlike social_search — and unlike ' +
-	'most search engines — this matches MEANING, not keywords, so describe what you want in natural ' +
-	'language and it works: "startups building on-device inference for robotics", "essays arguing ' +
-	'against microservices". The exact words need not appear on the page. ' +
-	'WHEN TO USE THIS over your own built-in web search: descriptive or conceptual queries where you ' +
-	'cannot name the right keywords; finding more pages like one you already have (similar_to); ' +
-	'research that should be restricted to or exclude particular domains; and when you want page ' +
-	'excerpts back in the same call instead of searching and then fetching each result. ' +
-	'WHEN NOT TO: quick factual lookups and breaking news — your own web search is faster and free ' +
-	'for those. This is also NOT for reading a specific known URL; use fetch_page for that. ' +
-	'Provide exactly one of query or similar_to. Returns title, url, date, author and query-relevant ' +
-	'highlights, plus the real cost of the call in cost_usd. Cached for 1 hour.';
+function webSearchDescription(caps: Capabilities): string {
+	const both = caps.brave && caps.exa;
+	const parts: string[] = ['Search the open web.'];
+
+	if (both) {
+		parts.push(
+			'Two engines, chosen with "mode". ' +
+				'KEYWORD (the default) is an ordinary search engine over an independent index — use it for ' +
+				'factual lookups, news, named things, versions and dates: "python 3.13 release date", ' +
+				'"kubernetes 1.32 changelog". ' +
+				'SEMANTIC matches MEANING rather than words, so it finds pages whose exact terms you cannot ' +
+				'guess: "startups building on-device inference for robotics", "essays arguing against ' +
+				'microservices". Reach for semantic when a keyword search would need words you do not have, ' +
+				'and for similar_to (find pages like a URL you already have), include/exclude domains at ' +
+				'scale, and category filtering.'
+		);
+	} else if (caps.brave) {
+		parts.push(
+			'An ordinary keyword search engine over an independent index — good for factual lookups, ' +
+				'news, named things, versions and dates.'
+		);
+	} else {
+		parts.push(
+			'Semantic search: this matches MEANING rather than keywords, so describe what you want in ' +
+				'natural language — "essays arguing against microservices" — and the exact words need not ' +
+				'appear on the page. Also supports similar_to, which finds pages like a URL you already have.'
+		);
+	}
+
+	parts.push(
+		'If your client already has its own web search tool, prefer that for trivial factual questions ' +
+			'and use this when you need what it cannot do; if it does not, this is your web search. ' +
+			'This is NOT for reading a specific known URL — use fetch_page for that. ' +
+			'Provide exactly one of query or similar_to. Returns title, url, date and relevant snippets. ' +
+			'Cached for 1 hour.'
+	);
+	return parts.join(' ');
+}
 
 export function handleToolsList(
 	id: string | number | null,
@@ -317,13 +343,26 @@ export function handleToolsList(
 		});
 	}
 
-	if (caps.exa) {
+	const searchModes = availableSearchModes(caps);
+	if (searchModes.length > 0) {
 		tools.push({
 			name: 'web_search',
-			description: WEB_SEARCH_DESCRIPTION,
+			description: webSearchDescription(caps),
 			inputSchema: {
 				type: 'object',
 				properties: {
+					...(searchModes.length > 1
+						? {
+								mode: {
+									type: 'string',
+									enum: searchModes,
+									description:
+										'Which engine to use. "keyword" (default) is an ordinary search engine — ' +
+										'best for factual lookups, news and named things. "semantic" matches meaning ' +
+										'rather than words, and is required for similar_to.'
+								}
+							}
+						: {}),
 					query: {
 						type: 'string',
 						description:
@@ -334,7 +373,7 @@ export function handleToolsList(
 						type: 'string',
 						description:
 							'A URL to find similar pages to, instead of searching by query. Results from the ' +
-							'same domain are excluded automatically. Omit if using query.'
+							'same domain are excluded automatically. Requires semantic mode. Omit if using query.'
 					},
 					time: {
 						type: 'string',
@@ -355,7 +394,8 @@ export function handleToolsList(
 						description:
 							'How much page content to return. "highlights" (default) gives short ' +
 							'query-relevant excerpts; "text" gives a longer extract per result and costs ' +
-							'far more context; "none" returns links only.'
+							'far more context (semantic mode only — keyword search returns snippets); ' +
+							'"none" returns links only.'
 					},
 					include_domains: {
 						type: 'array',
@@ -382,7 +422,7 @@ export function handleToolsList(
 						],
 						description:
 							'Restrict to a type of page. Useful for entity-style research, e.g. category ' +
-							'"company" when looking for businesses in a space.'
+							'"company" when looking for businesses in a space. Semantic mode only.'
 					}
 				},
 				additionalProperties: false
@@ -551,6 +591,13 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 	}
 
 	if (p?.name === 'web_search') {
+		const modes = availableSearchModes(caps);
+		if (modes.length === 0) {
+			return invalid(
+				'No web search engine is configured on this server. Set BRAVE_API_KEY for keyword ' +
+					'search or EXA_API_KEY for semantic search.'
+			);
+		}
 		const query = args.query;
 		const similarTo = args.similar_to;
 		const hasQuery = typeof query === 'string' && query.trim().length > 0;
@@ -568,6 +615,27 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 			} catch {
 				return invalid("'similar_to' must be a valid URL.");
 			}
+		}
+		// find-similar is an Exa capability; it has no keyword equivalent.
+		const requestedMode = args.mode;
+		if (requestedMode !== undefined && !isOneOf(requestedMode, ['keyword', 'semantic'] as const)) {
+			return invalid("'mode' must be 'keyword' or 'semantic'.");
+		}
+		const mode = (requestedMode ?? (hasSimilar ? 'semantic' : modes[0])) as
+			| 'keyword'
+			| 'semantic';
+		if (!modes.includes(mode)) {
+			return invalid(
+				`Search mode '${mode}' is not configured on this server — set ${
+					mode === 'keyword' ? 'BRAVE_API_KEY' : 'EXA_API_KEY'
+				} to enable it. Available: ${modes.join(', ')}.`
+			);
+		}
+		if (hasSimilar && mode !== 'semantic') {
+			return invalid(
+				"'similar_to' (find-similar) is only available in semantic mode. Pass mode: 'semantic', " +
+					'or use a query instead.'
+			);
 		}
 		const time = args.time ?? 'all';
 		if (!isOneOf(time, ['day', 'week', 'month', 'year', 'all'] as const)) {
@@ -601,6 +669,7 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 			ok: true,
 			tool: 'web_search',
 			args: {
+				mode,
 				...(hasQuery ? { query: (query as string).trim() } : {}),
 				...(hasSimilar ? { similarTo: (similarTo as string).trim() } : {}),
 				time,

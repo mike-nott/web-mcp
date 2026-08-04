@@ -2,7 +2,7 @@
 #
 # Secrets (set once with `echo "value" | wrangler secret put NAME`):
 #   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY,
-#   FIRECRAWL_API_KEY, YOUTUBE_API_KEY, SUPADATA_API_KEY, EXA_API_KEY
+#   FIRECRAWL_API_KEY, YOUTUBE_API_KEY, SUPADATA_API_KEY, EXA_API_KEY, BRAVE_API_KEY
 # Local dev reads the same names from .dev.vars (gitignored).
 # Deploying? See README — replace the KV namespace id below with your own.
 
@@ -24,6 +24,7 @@ YOUTUBE_SEARCH_DAILY_LIMIT = "90"
 # talk is ~120 credits), so one bad loop could eat a month's plan.
 SUPADATA_DAILY_LIMIT = "300"
 EXA_DAILY_CALL_LIMIT = "200"
+BRAVE_DAILY_CALL_LIMIT = "500"
 
 [[kv_namespaces]]
 binding = "KV"

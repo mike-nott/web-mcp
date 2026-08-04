@@ -27,6 +27,7 @@ import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
 import { exaSearch } from './providers/exa';
+import { braveSearch } from './providers/brave';
 
 export interface ToolResult {
 	text: string;
@@ -85,8 +86,28 @@ export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolR
 	if (cached) return ok(cached);
 
 	try {
+		if (args.mode === 'keyword') {
+			const notes = [...(args.category ? ['category is ignored in keyword mode.'] : [])];
+			const { results, notes: providerNotes } = await braveSearch(env, {
+				query: args.query ?? '',
+				time: args.time,
+				limit: args.limit,
+				content: args.content,
+				includeDomains: args.includeDomains,
+				excludeDomains: args.excludeDomains
+			});
+			const all = [...providerNotes, ...notes];
+			const text = JSON.stringify(
+				{ mode: 'keyword', results, ...(all.length ? { note: all.join(' ') } : {}) },
+				null,
+				1
+			);
+			await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
+			return ok(text);
+		}
+
 		const { results, costUsd } = await exaSearch(env, args);
-		const text = JSON.stringify({ results, cost_usd: costUsd }, null, 1);
+		const text = JSON.stringify({ mode: 'semantic', results, cost_usd: costUsd }, null, 1);
 		await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
 		return ok(text);
 	} catch (err) {

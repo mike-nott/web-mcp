@@ -3,7 +3,7 @@ import { BudgetExceededError } from './providers/errors';
 
 const KEY_TTL_SECONDS = 172800; // 48h — key outlives its UTC day, then self-cleans
 
-type PaidProvider = 'x' | 'firecrawl' | 'youtube_search' | 'supadata' | 'exa';
+type PaidProvider = 'x' | 'firecrawl' | 'youtube_search' | 'supadata' | 'exa' | 'brave';
 
 const SETTINGS: Record<
 	PaidProvider,
@@ -31,6 +31,13 @@ const SETTINGS: Record<
 		advice:
 			'Find videos another way — use your own web search with site:youtube.com — then pass the video ids ' +
 			'to get_thread or fetch_page, which still work normally. Google also grants quota increases on request.'
+	},
+	brave: {
+		label: 'Brave keyword search',
+		fallbackLimit: 500,
+		envVar: 'BRAVE_DAILY_CALL_LIMIT',
+		advice:
+			'Semantic search (mode: "semantic") and the other tools are unaffected. Raise BRAVE_DAILY_CALL_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
 	},
 	exa: {
 		label: 'Exa web search',
