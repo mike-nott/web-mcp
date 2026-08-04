@@ -221,13 +221,30 @@ The free Workers plan covers personal use comfortably.
 
 **5. Connect your client:**
 
+The server is stateless Streamable HTTP — any MCP client works with just a URL and a header.
+
+*Claude Code:*
+
 ```bash
 claude mcp add --transport http --scope user web-mcp \
   https://web-mcp.<your-subdomain>.workers.dev/mcp \
   --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
 ```
 
-Claude Code loads MCP servers at startup — restart afterwards. Any MCP client works the same way: Streamable HTTP endpoint + Authorization header.
+Restart afterwards — Claude Code loads MCP servers at startup.
+
+*Jan, or any client with an "add MCP server" dialog:*
+
+| Field | Value |
+|---|---|
+| Transport | **HTTP** (Streamable HTTP) |
+| URL | `https://web-mcp.<your-subdomain>.workers.dev/mcp` |
+| Header name | `Authorization` |
+| Header value | `Bearer <MCP_AUTH_TOKEN>` |
+
+Leave Command / Args / Env empty — those are for stdio servers. Worth raising your client's tool-call timeout above 30s, since a long video transcript or a bot-protection escalation can exceed it.
+
+*Clients that only speak stdio* can bridge with [`mcp-remote`](https://github.com/geelen/mcp-remote): command `npx`, args `-y mcp-remote <url> --header Authorization:${AUTH_HEADER}`, and `AUTH_HEADER=Bearer <token>` in env. The colon has no space after it deliberately — several clients mangle spaces inside args when invoking npx.
 
 ---
 

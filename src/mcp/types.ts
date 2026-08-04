@@ -22,10 +22,5 @@ export interface JsonRpcError {
 
 export type JsonRpcResponse = JsonRpcSuccess | JsonRpcError;
 
-export interface McpSession {
-	sessionId: string;
-	createdAt: string;
-	lastUsedAt: string;
-}
-
+/** Default when the client doesn't request a version we recognise. */
 export const MCP_PROTOCOL_VERSION = '2025-03-26';

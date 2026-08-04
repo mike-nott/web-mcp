@@ -62,12 +62,24 @@ export type ValidatedCall =
 	| { ok: true; tool: 'web_search'; args: WebSearchArgs }
 	| { ok: false; code: number; message: string };
 
-export function handleInitialize(id: string | number | null): JsonRpcResponse {
+// Our tool surface is identical across these revisions, so agreeing with
+// whatever the client asked for is both honest and maximally compatible —
+// strict clients can reject a version they didn't request.
+const KNOWN_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18'];
+
+export function handleInitialize(
+	id: string | number | null,
+	requestedVersion?: string
+): JsonRpcResponse {
+	const protocolVersion =
+		requestedVersion && KNOWN_PROTOCOL_VERSIONS.includes(requestedVersion)
+			? requestedVersion
+			: MCP_PROTOCOL_VERSION;
 	return {
 		jsonrpc: '2.0',
 		id,
 		result: {
-			protocolVersion: MCP_PROTOCOL_VERSION,
+			protocolVersion,
 			capabilities: { tools: { listChanged: false } },
 			serverInfo: { name: 'web-mcp', version: '1.0.0' }
 		}
