@@ -1,7 +1,8 @@
 # web-mcp — thin MCP server for walled web content (Reddit, X).
 #
 # Secrets (set once with `echo "value" | wrangler secret put NAME`):
-#   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY
+#   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY,
+#   FIRECRAWL_API_KEY
 # Local dev reads the same names from .dev.vars (gitignored).
 # Deploying? See README — replace the KV namespace id below with your own.
 
@@ -12,6 +13,7 @@ compatibility_date = "2026-08-01"
 [vars]
 REDDIT_USER_AGENT = "cf-worker:web-mcp:v1 (contact: mike@nott.org)"
 X_DAILY_CALL_LIMIT = "500"
+FIRECRAWL_DAILY_CALL_LIMIT = "200"
 
 [[kv_namespaces]]
 binding = "KV"

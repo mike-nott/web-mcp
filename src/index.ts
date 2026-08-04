@@ -16,7 +16,7 @@ import {
 	touchMcpSession
 } from './mcp/session';
 import { authenticateRequest } from './auth';
-import { runGetThread, runSocialSearch } from './tools';
+import { runFetchPage, runGetThread, runSocialSearch } from './tools';
 
 const SESSION_HEADER = 'Mcp-Session-Id';
 
@@ -74,10 +74,18 @@ async function handlePost(request: Request, env: Env): Promise<Response> {
 			if (!validated.ok) {
 				return jsonResponse(rpcError(id, validated.code, validated.message));
 			}
-			const result =
-				validated.tool === 'social_search'
-					? await runSocialSearch(env, validated.args)
-					: await runGetThread(env, validated.args);
+			let result;
+			switch (validated.tool) {
+				case 'social_search':
+					result = await runSocialSearch(env, validated.args);
+					break;
+				case 'get_thread':
+					result = await runGetThread(env, validated.args);
+					break;
+				case 'fetch_page':
+					result = await runFetchPage(env, validated.args);
+					break;
+			}
 			return jsonResponse({
 				jsonrpc: '2.0',
 				id,

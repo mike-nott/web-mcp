@@ -3,11 +3,20 @@
 // can read and react to them; only schema violations are protocol errors.
 
 import type { Env } from './env';
-import type { SearchArgs, ThreadArgs } from './mcp/handlers';
-import { cacheKey, getCached, putCached, SEARCH_CACHE_TTL, THREAD_CACHE_TTL } from './cache';
+import type { FetchPageArgs, SearchArgs, ThreadArgs } from './mcp/handlers';
+import {
+	cacheKey,
+	getCached,
+	putCached,
+	PAGE_CACHE_TTL,
+	SEARCH_CACHE_TTL,
+	THREAD_CACHE_TTL
+} from './cache';
 import { redditSearch, redditThread } from './providers/reddit';
 import type { SearchResult } from './providers/reddit';
 import { xSearch, xThread } from './providers/x';
+import { assertPublicHttpsUrl, directFetch } from './providers/page';
+import { firecrawlScrape } from './providers/firecrawl';
 
 export interface ToolResult {
 	text: string;
@@ -58,6 +67,37 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	// Cache only complete successes so a provider blip doesn't stick for an hour.
 	if (failures.length === 0) await putCached(env.KV, key, text, SEARCH_CACHE_TTL);
 	return ok(text);
+}
+
+export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolResult> {
+	const key = await cacheKey('page', { ...args });
+	const cached = await getCached(env.KV, key);
+	if (cached) return ok(cached);
+
+	try {
+		const url = assertPublicHttpsUrl(args.url);
+		// Tier 1 is free; it returns null whenever the page looks blocked, empty,
+		// or non-HTML, which is the signal to spend a FireCrawl credit.
+		const direct = await directFetch(url);
+		const page = direct ?? (await firecrawlScrape(env, url.toString()));
+		const tier = direct ? 'direct' : 'firecrawl';
+
+		const truncated = page.content.length > args.maxChars;
+		const payload = {
+			url: args.url,
+			final_url: page.finalUrl,
+			title: page.title,
+			status: page.status,
+			tier,
+			...(truncated ? { truncated: true, total_chars: page.content.length } : {}),
+			content: truncated ? page.content.slice(0, args.maxChars) + '\n\n… [truncated]' : page.content
+		};
+		const text = JSON.stringify(payload, null, 1);
+		await putCached(env.KV, key, text, PAGE_CACHE_TTL);
+		return ok(text);
+	} catch (err) {
+		return fail(err, 'fetch_page failed');
+	}
 }
 
 export async function runGetThread(env: Env, args: ThreadArgs): Promise<ToolResult> {

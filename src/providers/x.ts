@@ -4,7 +4,7 @@
 // Every upstream call consumes the daily X budget.
 
 import type { Env } from '../env';
-import { consumeXBudget } from '../budget';
+import { consumeBudget } from '../budget';
 import { ProviderError } from './errors';
 import type { SearchResult, Thread, ThreadComment } from './reddit';
 
@@ -22,7 +22,7 @@ interface Tweet {
 }
 
 async function xGet(env: Env, path: string): Promise<unknown> {
-	await consumeXBudget(env);
+	await consumeBudget(env, 'x');
 	const res = await fetch(`${BASE}${path}`, {
 		headers: { 'x-api-key': env.TWITTERAPI_IO_KEY }
 	});

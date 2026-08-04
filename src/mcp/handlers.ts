@@ -22,9 +22,15 @@ export interface ThreadArgs {
 	limit: number;
 }
 
+export interface FetchPageArgs {
+	url: string;
+	maxChars: number;
+}
+
 export type ValidatedCall =
 	| { ok: true; tool: 'social_search'; args: SearchArgs }
 	| { ok: true; tool: 'get_thread'; args: ThreadArgs }
+	| { ok: true; tool: 'fetch_page'; args: FetchPageArgs }
 	| { ok: false; code: number; message: string };
 
 export function handleInitialize(id: string | number | null): JsonRpcResponse {
@@ -44,9 +50,17 @@ const SEARCH_DESCRIPTION =
 	'cannot reach. Returns raw posts with engagement signals (score/likes, comment counts, authors, ' +
 	'dates, URLs) for you to weigh yourself: high-scoring posts with many comments indicate ' +
 	'community consensus; always follow up with get_thread on promising results, because the real ' +
-	'answers (and dissent) live in the comments, not the post. Native platform search operators ' +
-	"pass through in the query — Reddit: standard keyword search; X: 'from:user', 'min_faves:100', " +
-	"'since:2026-07-01', quoted phrases. Results are cached for 1 hour.";
+	'answers (and dissent) live in the comments, not the post. ' +
+	'IMPORTANT — these platforms use keyword (lexical) matching, NOT semantic search: a ' +
+	'natural-language question matches few terms and silently falls back to merely popular posts, ' +
+	'so a sentence-shaped query returns unrelated noise. Search like you would a keyword index. ' +
+	'BAD: "why do people say ComfyUI video workflows are slow". ' +
+	'GOOD: "comfyui video workflow slow" (keywords), or "wan 2.2" (quoted exact phrase). ' +
+	'Scope to a community whenever you can — it is the single biggest quality lever. If you do not ' +
+	'know the right subreddit, run one unscoped keyword search, read the "community" field on the ' +
+	'results to learn where the topic actually lives, then search again scoped to it. ' +
+	"X extras: 'from:user', 'min_faves:100' (quality floor), 'since:2026-07-01'. " +
+	'Results are cached for 1 hour.';
 
 const THREAD_DESCRIPTION =
 	'Fetch a full discussion thread with its scored comment/reply tree — use after social_search to ' +
@@ -54,6 +68,17 @@ const THREAD_DESCRIPTION =
 	'dates (Reddit comments are nested with a depth field; X replies are flat). Sort "top" surfaces ' +
 	'the community-endorsed answers; note high-scoring dissenting comments — they are signal, not ' +
 	'noise. Accepts a bare post/tweet id or a full URL. Results are cached for 15 minutes.';
+
+const FETCH_PAGE_DESCRIPTION =
+	'Read a web page that ordinary fetching cannot reach — sites behind Cloudflare or other bot ' +
+	'protection, JavaScript-rendered pages that return an empty shell, and PDFs. Use this whenever ' +
+	'your normal web-fetch tool fails, errors, is refused, or returns a challenge/consent page or a ' +
+	'near-empty document; it is the fallback, not the first choice. Returns extracted text as ' +
+	'markdown plus the final URL, title and HTTP status. The worker tries a free direct fetch first ' +
+	'and only escalates to the paid scraping service when the page is genuinely blocked — the ' +
+	'"tier" field tells you which path served the result. If a page cannot be retrieved you get an ' +
+	'explicit error rather than the challenge page\'s own HTML, so never treat a failure message as ' +
+	'page content. Results are cached for 1 hour.';
 
 export function handleToolsList(id: string | number | null): JsonRpcResponse {
 	return {
@@ -70,7 +95,8 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 							query: {
 								type: 'string',
 								description:
-									'Search terms. Platform-native operators pass through unchanged.'
+									'Keywords, not a question or sentence — these engines match terms literally. ' +
+									'Quote phrases for exact matching. Platform-native operators pass through unchanged.'
 							},
 							platform: {
 								type: 'string',
@@ -86,7 +112,9 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 							community: {
 								type: 'string',
 								description:
-									"Restrict to one subreddit, e.g. 'StableDiffusion' (Reddit only; ignored for X)."
+									"Restrict to one subreddit, e.g. 'StableDiffusion' (Reddit only; ignored for X). " +
+									'Strongly recommended — unscoped Reddit search is much noisier. Discover the right ' +
+									'one from the "community" field of an unscoped search if you are unsure.'
 							},
 							sort: {
 								type: 'string',
@@ -133,6 +161,28 @@ export function handleToolsList(id: string | number | null): JsonRpcResponse {
 							}
 						},
 						required: ['platform', 'id'],
+						additionalProperties: false
+					}
+				},
+				{
+					name: 'fetch_page',
+					description: FETCH_PAGE_DESCRIPTION,
+					inputSchema: {
+						type: 'object',
+						properties: {
+							url: {
+								type: 'string',
+								description: 'Full http(s) URL of the page to read.'
+							},
+							max_chars: {
+								type: 'integer',
+								minimum: 1000,
+								maximum: 200000,
+								description:
+									'Truncate the returned content to this many characters. Default: 50000.'
+							}
+						},
+						required: ['url'],
 						additionalProperties: false
 					}
 				}
@@ -224,9 +274,22 @@ export function validateToolCall(params: unknown): ValidatedCall {
 		return { ok: true, tool: 'get_thread', args: { platform, id, sort, limit } };
 	}
 
+	if (p?.name === 'fetch_page') {
+		const url = args.url;
+		if (typeof url !== 'string' || !url.trim()) {
+			return invalid("'url' is required and must be a non-empty string.");
+		}
+		const rawMax = args.max_chars ?? 50000;
+		if (typeof rawMax !== 'number' || !Number.isFinite(rawMax)) {
+			return invalid("'max_chars' must be a number between 1000 and 200000.");
+		}
+		const maxChars = Math.max(1000, Math.min(200000, Math.floor(rawMax)));
+		return { ok: true, tool: 'fetch_page', args: { url: url.trim(), maxChars } };
+	}
+
 	return {
 		ok: false,
 		code: MCP_ERROR_CODES.METHOD_NOT_FOUND,
-		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search' and 'get_thread'.`
+		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread' and 'fetch_page'.`
 	};
 }
