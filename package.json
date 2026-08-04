@@ -3,10 +3,11 @@
 	"version": "1.0.0",
 	"private": true,
 	"description": "Private MCP server on Cloudflare Workers giving agent sessions access to walled web content (Reddit, X)",
+	"license": "MIT",
 	"scripts": {
 		"dev": "wrangler dev",
 		"typecheck": "tsc --noEmit",
-		"deploy": "CLOUDFLARE_ACCOUNT_ID=258b070a59a9d28eee9b778148f4b743 wrangler deploy"
+		"deploy": "wrangler deploy"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^5.20260730.1",
