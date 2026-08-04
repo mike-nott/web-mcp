@@ -242,7 +242,9 @@ Restart afterwards — Claude Code loads MCP servers at startup.
 | Header name | `Authorization` |
 | Header value | `Bearer <MCP_AUTH_TOKEN>` |
 
-Leave Command / Args / Env empty — those are for stdio servers. Worth raising your client's tool-call timeout above 30s, since a long video transcript or a bot-protection escalation can exceed it.
+Leave Command / Args / Env empty — those are for stdio servers.
+
+The server speaks both halves of Streamable HTTP: plain JSON responses, or SSE when your client asks for `text/event-stream` (including the `GET` stream clients open for server-initiated messages). Long-running calls emit keepalive heartbeats, so transcripts and bot-protection escalations won't trip your client's idle timeout.
 
 *Clients that only speak stdio* can bridge with [`mcp-remote`](https://github.com/geelen/mcp-remote): command `npx`, args `-y mcp-remote <url> --header Authorization:${AUTH_HEADER}`, and `AUTH_HEADER=Bearer <token>` in env. The colon has no space after it deliberately — several clients mangle spaces inside args when invoking npx.
 

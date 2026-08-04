@@ -45,43 +45,115 @@ function jsonResponse(body: JsonRpcResponse): Response {
 	});
 }
 
-async function handlePost(request: Request, env: Env): Promise<Response> {
-	const auth = await authenticateRequest(env, request.headers.get('Authorization'));
-	if (!auth.ok) return jsonResponse(rpcError(null, auth.code, auth.message));
+const SSE_HEADERS: Record<string, string> = {
+	'Content-Type': 'text/event-stream; charset=utf-8',
+	'Cache-Control': 'no-cache',
+	// Required on Workers: without it, compression buffers the stream and
+	// nothing reaches the client until the response ends.
+	'Content-Encoding': 'identity',
+	...CORS_HEADERS
+};
 
-	let body: JsonRpcRequest;
-	try {
-		body = (await request.json()) as JsonRpcRequest;
-	} catch {
-		return jsonResponse(rpcError(null, MCP_ERROR_CODES.PARSE_ERROR, 'Invalid JSON'));
-	}
-	if (body?.jsonrpc !== '2.0' || typeof body.method !== 'string') {
-		return jsonResponse(
-			rpcError(body?.id ?? null, MCP_ERROR_CODES.INVALID_REQUEST, 'Not a JSON-RPC 2.0 request')
-		);
-	}
+const KEEPALIVE_MS = 15_000;
+const GET_STREAM_MAX_MS = 300_000; // bounded so an invocation can't live forever
 
+function wantsSse(request: Request): boolean {
+	return (request.headers.get('Accept') ?? '').includes('text/event-stream');
+}
+
+/**
+ * Streams one JSON-RPC response as SSE, with `: keepalive` comment frames while
+ * the work is in flight. The heartbeats reset client idle timeouts, which is
+ * what keeps long fetch_page transcript jobs alive against a 30s client limit.
+ *
+ * No `event:`/`id:` fields (no resumability offered) and no
+ * notifications/progress — the spec says to send those only for a
+ * client-supplied progressToken, and these tools have no intermediate progress
+ * worth reporting. A heartbeat is honest; invented progress is not.
+ */
+function sseResponse(work: () => Promise<JsonRpcResponse>): Response {
+	const { readable, writable } = new TransformStream();
+	const writer = writable.getWriter();
+	const enc = new TextEncoder();
+	let closed = false;
+
+	const write = (s: string): Promise<void> =>
+		closed
+			? Promise.resolve()
+			: writer.write(enc.encode(s)).catch(() => {
+					// Client disconnected — stop writing, let the work settle.
+					closed = true;
+				});
+
+	const heartbeat = setInterval(() => void write(': keepalive\n\n'), KEEPALIVE_MS);
+
+	void (async () => {
+		let response: JsonRpcResponse;
+		try {
+			response = await work();
+		} catch (err) {
+			response = rpcError(
+				null,
+				MCP_ERROR_CODES.INTERNAL_ERROR,
+				err instanceof Error ? err.message : String(err)
+			);
+		}
+		clearInterval(heartbeat);
+		await write(`data: ${JSON.stringify(response)}\n\n`);
+		await writer.close().catch(() => {});
+	})();
+
+	return new Response(readable, { status: 200, headers: SSE_HEADERS });
+}
+
+/**
+ * The stream a client opens with GET for server-initiated messages. This server
+ * has none to push, so it simply stays alive on keepalives — which is what the
+ * client is waiting for. Bounded; clients reconnect, which is normal for SSE.
+ */
+function sseKeepaliveStream(): Response {
+	const { readable, writable } = new TransformStream();
+	const writer = writable.getWriter();
+	const enc = new TextEncoder();
+	let closed = false;
+
+	const write = (s: string): Promise<void> =>
+		closed
+			? Promise.resolve()
+			: writer.write(enc.encode(s)).catch(() => {
+					closed = true;
+				});
+
+	void (async () => {
+		await write(': connected\n\n');
+		const deadline = Date.now() + GET_STREAM_MAX_MS;
+		while (!closed && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, KEEPALIVE_MS));
+			await write(': keepalive\n\n');
+		}
+		await writer.close().catch(() => {});
+	})();
+
+	return new Response(readable, { status: 200, headers: SSE_HEADERS });
+}
+
+/** Produces the JSON-RPC response; the caller decides JSON vs SSE delivery. */
+async function dispatch(body: JsonRpcRequest, env: Env): Promise<JsonRpcResponse> {
 	const id = body.id ?? null;
 
 	if (body.method === 'initialize') {
 		const requested = (body.params as { protocolVersion?: string } | undefined)?.protocolVersion;
-		return jsonResponse(handleInitialize(id, requested));
-	}
-
-	if (body.method === 'notifications/initialized') {
-		return new Response(null, { status: 202, headers: CORS_HEADERS });
+		return handleInitialize(id, requested);
 	}
 
 	const caps = detectCapabilities(env);
 
 	switch (body.method) {
 		case 'tools/list':
-			return jsonResponse(handleToolsList(id, caps));
+			return handleToolsList(id, caps);
 		case 'tools/call': {
 			const validated = validateToolCall(body.params, caps);
-			if (!validated.ok) {
-				return jsonResponse(rpcError(id, validated.code, validated.message));
-			}
+			if (!validated.ok) return rpcError(id, validated.code, validated.message);
 			let result;
 			switch (validated.tool) {
 				case 'social_search':
@@ -100,22 +172,48 @@ async function handlePost(request: Request, env: Env): Promise<Response> {
 					result = await runWebSearch(env, validated.args);
 					break;
 			}
-			return jsonResponse({
+			return {
 				jsonrpc: '2.0',
 				id,
 				result: {
 					content: [{ type: 'text', text: result.text }],
 					...(result.isError ? { isError: true } : {})
 				}
-			});
+			};
 		}
 		case 'ping':
-			return jsonResponse({ jsonrpc: '2.0', id, result: {} });
+			return { jsonrpc: '2.0', id, result: {} };
 		default:
-			return jsonResponse(
-				rpcError(id, MCP_ERROR_CODES.METHOD_NOT_FOUND, `Unknown method: ${body.method}`)
-			);
+			return rpcError(id, MCP_ERROR_CODES.METHOD_NOT_FOUND, `Unknown method: ${body.method}`);
 	}
+}
+
+async function handlePost(request: Request, env: Env): Promise<Response> {
+	const auth = await authenticateRequest(env, request.headers.get('Authorization'));
+	if (!auth.ok) return jsonResponse(rpcError(null, auth.code, auth.message));
+
+	let body: JsonRpcRequest;
+	try {
+		body = (await request.json()) as JsonRpcRequest;
+	} catch {
+		return jsonResponse(rpcError(null, MCP_ERROR_CODES.PARSE_ERROR, 'Invalid JSON'));
+	}
+	if (body?.jsonrpc !== '2.0' || typeof body.method !== 'string') {
+		return jsonResponse(
+			rpcError(body?.id ?? null, MCP_ERROR_CODES.INVALID_REQUEST, 'Not a JSON-RPC 2.0 request')
+		);
+	}
+
+	// A notification has no response at all — answering one would violate the spec.
+	if (body.method === 'notifications/initialized') {
+		return new Response(null, { status: 202, headers: CORS_HEADERS });
+	}
+
+	// Clients that advertise text/event-stream get the streaming transport;
+	// everything else keeps the plain JSON body it has always had.
+	return wantsSse(request)
+		? sseResponse(() => dispatch(body, env))
+		: jsonResponse(await dispatch(body, env));
 }
 
 export default {
@@ -125,6 +223,19 @@ export default {
 		switch (request.method) {
 			case 'POST':
 				return handlePost(request, env);
+			case 'GET': {
+				// The server-initiated message stream. We have nothing to push, but
+				// clients open this and wait on it — returning 405 made Jan tear the
+				// connection down and reconnect in a loop.
+				const auth = await authenticateRequest(env, request.headers.get('Authorization'));
+				if (!auth.ok) {
+					return new Response('Unauthorized', { status: 401, headers: CORS_HEADERS });
+				}
+				if (!wantsSse(request)) {
+					return new Response('Method Not Allowed', { status: 405, headers: CORS_HEADERS });
+				}
+				return sseKeepaliveStream();
+			}
 			case 'OPTIONS':
 				return new Response(null, { status: 204, headers: CORS_HEADERS });
 			case 'DELETE':
