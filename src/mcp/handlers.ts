@@ -142,8 +142,16 @@ const FIND_COMMUNITIES_DESCRIPTION =
 	'Returns name, subscriber count, and description for each; subscriber count is a rough proxy ' +
 	'for whether a community is the main venue for a topic or a small offshoot, though the largest ' +
 	'is not always the most specialised — a 30k-member niche subreddit often has better practitioner ' +
-	'depth than a 20M general one. Matches on both names and descriptions, so expect some unrelated ' +
-	'results and judge by the description. Reddit only. Cached for 24 hours.';
+	'depth than a 20M general one. ' +
+	'IMPORTANT — this matches keywords literally against subreddit names and descriptions; it is NOT ' +
+	'semantic. A question or sentence matches almost nothing and silently falls back to merely ' +
+	'popular subreddits, which is easy to mistake for a real answer. ' +
+	'BAD: "how do I make my house smarter with automation" (returns r/dividends, r/Rabbits, ' +
+	'r/HairDye — pure noise). GOOD: "home automation", "smart home". ' +
+	'Two or three results is normal and correct for a niche topic — sparse output means the topic is ' +
+	'narrow, not that the call failed. If results look off-target, try a different keyword rather ' +
+	'than rephrasing into a sentence. Some unrelated matches are expected either way, so judge by ' +
+	'the description text. Reddit only. Cached for 24 hours.';
 
 function webSearchDescription(caps: Capabilities): string {
 	const both = caps.keyword && caps.exa;
@@ -328,7 +336,9 @@ export function handleToolsList(
 				properties: {
 					topic: {
 						type: 'string',
-						description: "Keywords describing the subject, e.g. 'local llm', 'video generation'."
+						description:
+							'Keywords, not a question or sentence — this matches terms literally against ' +
+							"subreddit names and descriptions. e.g. 'local llm', 'video generation', 'home automation'."
 					},
 					limit: {
 						type: 'integer',
