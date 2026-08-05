@@ -88,7 +88,10 @@ export function handleInitialize(
 
 const SEARCH_DESCRIPTION =
 	'Search recent discussions on Reddit, X (Twitter) and YouTube — the practitioner layer that web ' +
-	'search cannot reach. Returns raw items with engagement signals (score/likes, comment counts, ' +
+	'search cannot reach. This is THE way to search those platforms: reaching for a general web ' +
+	'search with a site:reddit.com filter instead gets you second-hand snippets and misses the ' +
+	'comments entirely. ' +
+	'Returns raw items with engagement signals (score/likes, comment counts, ' +
 	'views on YouTube, authors, dates, URLs) for you to weigh yourself: high-scoring posts with many ' +
 	'comments indicate community consensus; always follow up with get_thread on promising results, ' +
 	'because the real answers (and dissent) live in the comments, not the post. On YouTube, pair a ' +
@@ -191,6 +194,19 @@ function webSearchDescription(caps: Capabilities): string {
 			'Semantic search: this matches MEANING rather than keywords, so describe what you want in ' +
 				'natural language — "essays arguing against microservices" — and the exact words need not ' +
 				'appear on the page. Also supports similar_to, which finds pages like a URL you already have.'
+		);
+	}
+
+	if (availablePlatforms(caps).length > 0) {
+		// Without this, models reach for a site:reddit.com query here instead of
+		// the tool built for it — which returns search-engine snippets rather than
+		// the posts and comment trees that are the whole point of this server.
+		parts.push(
+			'NOT for searching Reddit, X or YouTube — use social_search for those. A site: query here ' +
+				'returns second-hand search-engine snippets, while social_search returns the posts ' +
+				'themselves with scores, comment counts and dates, and get_thread then gives you the full ' +
+				'comment tree. Search engines index that layer poorly or not at all, which is exactly why ' +
+				'these tools exist.'
 		);
 	}
 
