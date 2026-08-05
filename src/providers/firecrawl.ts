@@ -16,7 +16,7 @@ import { ProviderError } from './errors';
 import type { ScrapedPage } from './types';
 
 const API_BASE = 'https://api.firecrawl.dev/v2';
-const SCRAPE_TIMEOUT_MS = 30000; // stays inside MCP client tool timeouts (no SSE keepalive)
+const SCRAPE_TIMEOUT_MS = 30000; // bounded so a hung scrape can't stall a tool call
 const CACHE_MAX_AGE_MS = 172800000; // 48h — reuse FireCrawl's own page cache
 const THIN_CONTENT = 200;
 

@@ -12,7 +12,9 @@ import { ProviderError } from './errors';
 import type { ScrapedPage } from './types';
 
 const API_BASE = 'https://api.supadata.ai/v1';
-const POLL_BUDGET_MS = 25000; // stay inside MCP client tool timeouts (no SSE keepalive)
+// Bounded so a long job returns a retry message rather than stalling. SSE
+// keepalives cover the wait for clients that use the streaming transport.
+const POLL_BUDGET_MS = 25000;
 const POLL_INTERVAL_MS = 1500;
 const JOB_TTL_SECONDS = 3600; // matches Supadata's 1h result retention
 

@@ -128,6 +128,8 @@ Their indexes are largely disjoint, so recall roughly doubles. Every result list
 
 Everything is cached in KV and every paid provider has a daily spend ceiling that fails with a readable message rather than a surprise bill.
 
+> Extending it, or want the reasoning behind the design? **[ARCHITECTURE.md](ARCHITECTURE.md)** covers the principles, how to add a provider, and the per-provider gotchas that aren't in any vendor's docs.
+
 ---
 
 ## Setup
