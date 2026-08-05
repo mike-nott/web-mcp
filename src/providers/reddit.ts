@@ -8,40 +8,108 @@ import { ProviderError } from './errors';
 import type { SearchResult, Thread, ThreadComment } from './types';
 
 const TOKEN_KEY = 'reddit:token';
-const TOKEN_TTL_SECONDS = 3300; // Reddit tokens last 60min; refresh at 55
 
-async function getToken(env: Env): Promise<string> {
+// Reddit's client_credentials tokens are valid for 24h (the endpoint reports
+// expires_in: 86400). An earlier hardcoded 3300s TTL threw away a perfectly
+// good token every 55 minutes — ~26 auth requests a day instead of one, which
+// is what pushed the auth endpoint into rate-limiting us. The lifetime is now
+// read from the response rather than assumed.
+const FALLBACK_TOKEN_LIFETIME_S = 86400;
+// Refresh slightly early, but leave the entry in KV until it truly expires so a
+// rate-limited refresh can fall back on a token that still works.
+const REFRESH_MARGIN_S = 300;
+const AUTH_RETRIES = 2;
+const AUTH_BACKOFF_MS = 1500;
+
+interface CachedToken {
+	token: string;
+	expiresAt: number; // epoch ms
+}
+
+function readCached(raw: string | null): CachedToken | null {
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as CachedToken;
+		return parsed?.token && typeof parsed.expiresAt === 'number' ? parsed : null;
+	} catch {
+		// Legacy entries were a bare token string with no expiry recorded. Treat
+		// as a miss and refresh — no migration step needed.
+		return null;
+	}
+}
+
+async function fetchNewToken(env: Env): Promise<string> {
+	for (let attempt = 0; attempt <= AUTH_RETRIES; attempt++) {
+		const res = await fetch('https://www.reddit.com/api/v1/access_token', {
+			method: 'POST',
+			headers: {
+				Authorization: 'Basic ' + btoa(`${env.REDDIT_CLIENT_ID}:${env.REDDIT_CLIENT_SECRET}`),
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'User-Agent': env.REDDIT_USER_AGENT
+			},
+			body: 'grant_type=client_credentials'
+		});
+
+		if (res.status === 429) {
+			if (attempt < AUTH_RETRIES) {
+				await new Promise((resolve) => setTimeout(resolve, AUTH_BACKOFF_MS * (attempt + 1)));
+				continue;
+			}
+			throw new ProviderError(
+				'Reddit rate-limited the authentication request (HTTP 429) and is still limiting after ' +
+					'retries. This usually clears within a few minutes.'
+			);
+		}
+		if (res.status === 401 || res.status === 403) {
+			throw new ProviderError(
+				'Reddit rejected the credentials — check REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET, and ' +
+					'that the app is of type "script".'
+			);
+		}
+		if (!res.ok) throw new ProviderError(`Reddit token request failed (HTTP ${res.status})`);
+
+		const data = (await res.json()) as { access_token?: string; expires_in?: number };
+		if (!data.access_token) throw new ProviderError('Reddit token response missing access_token');
+
+		const lifetime = data.expires_in ?? FALLBACK_TOKEN_LIFETIME_S;
+		const entry: CachedToken = { token: data.access_token, expiresAt: Date.now() + lifetime * 1000 };
+		await env.KV.put(TOKEN_KEY, JSON.stringify(entry), { expirationTtl: lifetime });
+		return entry.token;
+	}
+	throw new ProviderError('Reddit authentication failed after retries.');
+}
+
+async function getToken(env: Env, forceRefresh = false): Promise<string> {
 	if (!env.REDDIT_CLIENT_ID || !env.REDDIT_CLIENT_SECRET) {
 		throw new ProviderError(
 			'Reddit is not configured on this server — set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET.'
 		);
 	}
-	const cached = await env.KV.get(TOKEN_KEY);
-	if (cached) return cached;
-	const res = await fetch('https://www.reddit.com/api/v1/access_token', {
-		method: 'POST',
-		headers: {
-			Authorization: 'Basic ' + btoa(`${env.REDDIT_CLIENT_ID}:${env.REDDIT_CLIENT_SECRET}`),
-			'Content-Type': 'application/x-www-form-urlencoded',
-			'User-Agent': env.REDDIT_USER_AGENT
-		},
-		body: 'grant_type=client_credentials'
-	});
-	if (!res.ok) throw new ProviderError(`Reddit token request failed (HTTP ${res.status})`);
-	const data = (await res.json()) as { access_token?: string };
-	if (!data.access_token) throw new ProviderError('Reddit token response missing access_token');
-	await env.KV.put(TOKEN_KEY, data.access_token, { expirationTtl: TOKEN_TTL_SECONDS });
-	return data.access_token;
+	const cached = readCached(await env.KV.get(TOKEN_KEY));
+
+	if (!forceRefresh && cached && Date.now() < cached.expiresAt - REFRESH_MARGIN_S * 1000) {
+		return cached.token;
+	}
+
+	try {
+		return await fetchNewToken(env);
+	} catch (err) {
+		// A refresh that fails while the cached token is still technically valid
+		// shouldn't take Reddit down — use what we have and let the next call retry.
+		if (!forceRefresh && cached && Date.now() < cached.expiresAt) return cached.token;
+		throw err;
+	}
 }
 
 async function redditGet(env: Env, path: string, retried = false): Promise<unknown> {
-	const token = await getToken(env);
+	const token = await getToken(env, retried);
 	const res = await fetch(`https://oauth.reddit.com${path}`, {
 		headers: { Authorization: `Bearer ${token}`, 'User-Agent': env.REDDIT_USER_AGENT }
 	});
 	if (res.status === 401 && !retried) {
-		// Token expired or revoked early — drop the cache and retry once.
-		await env.KV.delete(TOKEN_KEY);
+		// Token rejected early. Retry with a forced refresh — the replacement is
+		// only written to KV on success, so a rate-limited refresh leaves the
+		// existing entry intact rather than emptying the cache.
 		return redditGet(env, path, true);
 	}
 	if (res.status === 429) {
