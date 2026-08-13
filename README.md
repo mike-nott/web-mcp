@@ -261,7 +261,7 @@ The server speaks both halves of Streamable HTTP: plain JSON responses, or SSE w
 
 ## Roadmap
 
-**Discord** — searching servers you're a member of. There's no read API for it and datacenter IPs are blocked, so it likely needs a small local companion process rather than a worker provider. Same MCP pattern, different host.
+**Discord** — searching servers you're a member of. There's no read API, no public content, and datacenter IPs are blocked, so it needs a small local companion process rather than a worker provider. The options considered and the reasoning are written up in [docs/discord-research.md](docs/discord-research.md).
 
 Issues and ideas welcome.
 

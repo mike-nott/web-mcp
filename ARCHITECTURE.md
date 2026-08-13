@@ -74,6 +74,8 @@ Facts that are not guessable from vendor documentation — two of them actively 
 | **Cloudflare** | KV is eventually consistent, and deploys propagate unevenly for a minute or two | Don't judge a deploy immediately; verify by polling until behaviour is consistent |
 | **HTMLRewriter** | `element.remove()` strips from *output*, but text handlers still fire for removed content | Transform first, then strip tags — collecting via handlers leaks script bodies |
 
+**Known limitation:** `fetch_page`'s free tier only accepts `html` and `text/plain`, so an RSS/Atom feed (`application/rss+xml`) escalates to FireCrawl and spends a credit reading a plain XML file. Widening that check in `src/providers/page.ts` would fix it; not done because feeds haven't come up in practice.
+
 ## MCP client compatibility
 
 | Client | Status |
@@ -88,6 +90,10 @@ Two server-side properties turned out to decide whether a client works at all, b
 **Session management must be optional.** The server issues no `Mcp-Session-Id` and requires none. When it *did* require one, any client that failed to echo the header got `-32600` inside an HTTP `200` — so it displayed zero tools with no error to explain why. The MCP spec makes sessions optional precisely so stateless servers can exist.
 
 **SSE is not optional in practice.** Clients advertise `Accept: text/event-stream` first and open a `GET /mcp` stream. Returning JSON everywhere and `405` on `GET` is spec-legal but caused at least one client to reconnect in a loop. `POST` now answers with an SSE frame when asked, `GET` returns a keepalive stream, and heartbeats every 15s keep long calls (transcripts, bot-protection escalation) inside client idle timeouts.
+
+## Roadmap
+
+**Discord** is the only outstanding source, and the only one with no sanctioned programmatic route — no search API, no public content, and bots need a per-server invite from an admin. The chosen design is a local Playwright process driving a real logged-in browser session, deliberately *outside* this worker: see **[docs/discord-research.md](docs/discord-research.md)** for the options rejected and why (datacenter IPs are the deciding factor).
 
 ## Layout
 
