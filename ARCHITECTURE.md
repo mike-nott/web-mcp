@@ -70,6 +70,7 @@ Facts that are not guessable from vendor documentation — two of them actively 
 | **Supadata** | `mode=auto` silently falls back to AI generation billed **per minute** (a 60-min talk ≈ 120 credits) | Pinned to `native`; `generate: true` is an explicit opt-in |
 | **Supadata** | Videos >20 min return `202` + a job id | Polled within budget; the job id is cached so a retry resumes rather than paying twice |
 | **FireCrawl** | A 403 challenge page can come back as `success: true` with junk markdown | Status code *and* content length are validated, not just `success` |
+| **FireCrawl** | `location: { country }` geo-targets the exit IP, but is **country-level only** (no city) | `fetch_page`'s `country` arg forces the paid tier — the free tier-1 fetch is the worker's own IP and can't be geo-located, so a geo request skips it |
 | **Exa** | `deep`/`deep-reasoning` modes can run for minutes | Pinned to `auto` — anything longer breaks client tool timeouts |
 | **Cloudflare** | KV is eventually consistent, and deploys propagate unevenly for a minute or two | Don't judge a deploy immediately; verify by polling until behaviour is consistent |
 | **HTMLRewriter** | `element.remove()` strips from *output*, but text handlers still fire for removed content | Transform first, then strip tags — collecting via handlers leaks script bodies |

@@ -255,6 +255,7 @@ The server speaks both halves of Streamable HTTP: plain JSON responses, or SSE w
 ## Good to know
 
 - **Search technique matters.** Reddit, X and YouTube match keywords, not meaning — a natural-language question silently degrades into "merely popular posts". Short keyword queries win, and scoping to a subreddit is the biggest lever. The tool descriptions teach your model this, so you don't have to.
+- **Geo-targeted fetch.** Pass `country` (ISO 3166-1 alpha-2, e.g. `US`, `DE`, `JP`) to `fetch_page` to read a page as seen from that country — for geo-restricted or geo-varying content. Country-level only, and it forces the paid FireCrawl tier (the free fetch uses the worker's own IP and can't be geo-located).
 - **Transcripts** cost 1 credit using existing captions. `generate: true` transcribes audio instead, billed **per minute** — a 60-minute talk ≈ 120 credits. Opt-in only.
 - **TwitterAPI.io is third-party** — ~30× cheaper than the official X API, but grey-market. `src/providers/` is abstracted, so swapping is contained.
 - **Privacy.** Single-user by design: one shared token, no accounts. Don't publish your worker URL and token together.

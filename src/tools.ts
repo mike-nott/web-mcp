@@ -159,8 +159,16 @@ export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolR
 		let page;
 		let tier: string;
 		if (isVideoUrl(url)) {
+			// country does not apply: a transcript is location-independent.
 			page = await fetchTranscript(env, url.toString(), { generate: args.generate });
 			tier = 'transcript';
+		} else if (args.country) {
+			// Geo-targeting only works through FireCrawl — the free tier-1 fetch is the
+			// worker's own IP and can't be geo-located. Trying it first would return
+			// content from the wrong location and never escalate, silently ignoring the
+			// request, so a country request goes straight to the paid tier.
+			page = await firecrawlScrape(env, url.toString(), args.country);
+			tier = 'firecrawl';
 		} else {
 			// Tier 1 is free; it returns null whenever the page looks blocked, empty,
 			// or non-HTML, which is the signal to spend a FireCrawl credit.
@@ -176,6 +184,7 @@ export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolR
 			title: page.title,
 			status: page.status,
 			tier,
+			...(args.country ? { country: args.country } : {}),
 			...(page.note ? { note: page.note } : {}),
 			...(truncated ? { truncated: true, total_chars: page.content.length } : {}),
 			content: truncated ? page.content.slice(0, args.maxChars) + '\n\n… [truncated]' : page.content

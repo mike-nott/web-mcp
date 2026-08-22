@@ -35,6 +35,7 @@ export interface FetchPageArgs {
 	url: string;
 	maxChars: number;
 	generate: boolean;
+	country?: string;
 }
 
 export interface FindCommunitiesArgs {
@@ -135,7 +136,9 @@ function fetchPageDescription(caps: Capabilities): string {
 	}
 	const tiers = caps.firecrawl
 		? 'The worker tries a free direct fetch first and only escalates to the paid scraping service ' +
-			'when the page is genuinely blocked — the "tier" field tells you which path served the result. '
+			'when the page is genuinely blocked — the "tier" field tells you which path served the result. ' +
+			'Pass an optional "country" (ISO 3166-1 alpha-2, e.g. "US", "DE") to read the page as seen ' +
+			'from that country for geo-varying content; this forces the paid tier and costs a credit. '
 		: 'This server has no bot-protection bypass configured, so pages behind an active challenge ' +
 			'will report an error rather than returning content. ';
 	return (
@@ -346,6 +349,19 @@ export function handleToolsList(
 									'with speech recognition. Costs substantially more (billed per minute of video), ' +
 									'so only set this after a normal call reports no transcript is available. ' +
 									'Default: false.'
+							}
+						}
+					: {}),
+				...(caps.firecrawl
+					? {
+							country: {
+								type: 'string',
+								description:
+									'Fetch the page as seen from this country (ISO 3166-1 alpha-2, e.g. "US", ' +
+									'"DE", "JP"), for geo-restricted or geo-varying content. Country-level only. ' +
+									'This forces the paid tier and costs a credit — the free direct fetch uses the ' +
+									'worker\'s own IP and cannot be geo-located — so only set it when location ' +
+									'actually matters. Ignored for video URLs.'
 							}
 						}
 					: {})
@@ -608,10 +624,22 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		if (generate !== undefined && typeof generate !== 'boolean') {
 			return invalid("'generate' must be a boolean.");
 		}
+		let country: string | undefined;
+		if (args.country !== undefined) {
+			if (!caps.firecrawl) {
+				return invalid(
+					"'country' geo-targeting requires FireCrawl, which is not configured on this server."
+				);
+			}
+			if (typeof args.country !== 'string' || !/^[A-Za-z]{2}$/.test(args.country)) {
+				return invalid("'country' must be a two-letter ISO 3166-1 code, e.g. 'US', 'DE', 'JP'.");
+			}
+			country = args.country.toUpperCase();
+		}
 		return {
 			ok: true,
 			tool: 'fetch_page',
-			args: { url: url.trim(), maxChars, generate: generate === true }
+			args: { url: url.trim(), maxChars, generate: generate === true, country }
 		};
 	}
 

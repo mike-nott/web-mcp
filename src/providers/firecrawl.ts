@@ -88,7 +88,11 @@ async function post(env: Env, body: unknown, retriedOn429 = false): Promise<Fire
 	return (await res.json()) as FirecrawlResponse;
 }
 
-export async function firecrawlScrape(env: Env, url: string): Promise<ScrapedPage> {
+export async function firecrawlScrape(
+	env: Env,
+	url: string,
+	country?: string
+): Promise<ScrapedPage> {
 	if (!env.FIRECRAWL_API_KEY) {
 		throw new ProviderError(
 			'FIRECRAWL_API_KEY is not configured, so blocked pages cannot be retrieved.'
@@ -103,7 +107,10 @@ export async function firecrawlScrape(env: Env, url: string): Promise<ScrapedPag
 		proxy: 'auto',
 		blockAds: true,
 		maxAge: CACHE_MAX_AGE_MS,
-		timeout: SCRAPE_TIMEOUT_MS
+		timeout: SCRAPE_TIMEOUT_MS,
+		// Geo-target the exit IP so the page is fetched as seen from `country`.
+		// ISO 3166-1 alpha-2, country-level only (FireCrawl has no city granularity).
+		...(country ? { location: { country } } : {})
 	});
 
 	if (!result.success) {
