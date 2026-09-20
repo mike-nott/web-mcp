@@ -79,8 +79,43 @@ Two MCP servers is *simpler* than tunnelling from the worker back to the Mac —
 - Still automation of a user session. Lower risk than the alternatives, not zero: fine for occasional research, not for volume.
 - Coverage is limited to servers Mike is already a member of.
 
-## Open questions before building
+## Open questions before building (superseded — see the 2026-09 update below)
 
 1. **Scope** — search across all servers, or a named few? Search results only, or full message threads? This decides whether we drive the global search UI or something narrower.
 2. **Connection** — a separate local stdio MCP server is the assumed shape; confirm before building.
 3. **Tooling** — Playwright over Puppeteer, for better persistent-context handling and a stronger stealth ecosystem.
+
+## 2026-09 update: what was actually built (and why it changed twice)
+
+The analysis above was written against two constraints that later dissolved:
+a **dedicated Discord account** (removing the primary-account risk) and
+**residential proxy access** (Oxylabs, seemingly removing the datacenter-IP
+tell). With both in hand, the worker-native path was tried first and the
+Playwright plan was shelved:
+
+1. **Worker + user token + Oxylabs residential tunnel** — `cloudflare:sockets`
+   CONNECT to `pr.oxylabs.io`, then HTTPS to discord.com through a residential
+   exit. Auth, tunnel, and exit IP all verified working. **Rejected live**:
+   discord.com's own Cloudflare edge returned a bare `403` (nginx-style block
+   page, no Discord code) for every worker-originated request, while the
+   byte-identical request via curl from a residential IP through the *same*
+   Oxylabs exit returned 200. The block keys on workerd's TLS fingerprint, not
+   the IP — no proxy fixes it.
+2. **Companion relay (shipped)** — the same insight the Playwright plan was
+   built on (the request must not originate from Cloudflare), minus the
+   browser: a tiny Node process on a machine you own (`companion/companion.mjs`)
+   holds an *outbound* WebSocket to a `DiscordRelay` Durable Object; the worker
+   forwards search GETs down the socket and the companion performs the real
+   HTTPS request. MCP clients and secrets stay entirely worker-side; multiple
+   companions rotate with failover. See ARCHITECTURE.md's gotcha table for the
+   hibernation-API and `min_id`/`after:` findings this surfaced.
+
+The open questions resolved as: search-only (no threads — search results are
+self-contained message text); no `guild` argument means fan-out across every
+server the account has joined; and the token extraction method moved to
+DevTools Network headers, since Discord no longer stores a usable raw token
+in localStorage.
+
+The risk analysis above survives unchanged: user-token automation is still
+against ToS, low volume keeps practical risk low, and the dedicated account
+bears whatever risk exists.

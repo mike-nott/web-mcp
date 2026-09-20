@@ -64,6 +64,7 @@ That's four of the five tools working, for £0.
 | **Exa** | Semantic search — finds pages whose keywords you can't guess, plus find-similar | ~$0.007/call |
 | **TwitterAPI.io** | X search and reply threads | ~$0.15/1k tweets |
 | **Brave** | Keyword search with an independent index + publication dates | ~$5/1k, no free tier |
+| **Discord** | Message search across the servers a dedicated account has joined (needs a free companion process on a machine you own — see below) | Free — the companion runs on your own hardware |
 
 **`MCP_AUTH_TOKEN` is the only required secret.** Every source is independent, and the server **only advertises tools whose providers are configured** — your agent is never offered something it can't use, and never discovers that by failing.
 
@@ -75,7 +76,7 @@ That's four of the five tools working, for £0.
 
 | Tool | |
 |---|---|
-| `social_search` | Search Reddit, X and YouTube together. Returns engagement signals — scores, views, comment counts, authors, dates — so you can weigh consensus yourself |
+| `social_search` | Search Reddit, X, YouTube — and Discord servers a dedicated account has joined (opt-in: pass `platform: "discord"`). Returns engagement signals — scores, views, comment counts, authors, dates — so you can weigh consensus yourself |
 | `get_thread` | The full scored comment tree. High-voted *dissent* is often the most valuable thing on the page |
 | `find_communities` | Which subreddits own a topic. Scoping a search is the single biggest quality lever |
 
@@ -260,9 +261,33 @@ The server speaks both halves of Streamable HTTP: plain JSON responses, or SSE w
 - **TwitterAPI.io is third-party** — ~30× cheaper than the official X API, but grey-market. `src/providers/` is abstracted, so swapping is contained.
 - **Privacy.** Single-user by design: one shared token, no accounts. Don't publish your worker URL and token together.
 
-## Roadmap
+## Discord companion
 
-**Discord** — searching servers you're a member of. There's no read API, no public content, and datacenter IPs are blocked, so it needs a small local companion process rather than a worker provider. The options considered and the reasoning are written up in [docs/discord-research.md](docs/discord-research.md).
+**Discord** is shipped as `platform: "discord"` on `social_search` — but it needs one extra piece, because Discord's Cloudflare edge blocks every request whose TLS handshake originates from a Cloudflare Worker (403 regardless of exit IP or headers). The fix: a tiny **companion** process on any always-on machine you own (Mac, Linux box, NAS). It holds an outbound WebSocket to your worker; Discord searches are relayed through it and executed with that machine's real residential/network IP and TLS stack.
+
+```
+MCP clients ──▶ CF Worker ──▶ Durable Object ──WebSocket──▶ companion (your box) ──▶ Discord
+```
+
+Multiple companions can connect simultaneously — requests rotate across them and fail over if one goes down. Any companion can serve any request, so install it on every machine you have.
+
+**Setup:**
+
+```bash
+# 1. On the worker side (once): a shared secret for the companion WebSocket
+echo "relay-$(openssl rand -hex 24)" | npx wrangler secret put DISCORD_RELAY_SECRET
+
+# 2. On each machine you want as a companion (Linux or macOS):
+curl -fsSL https://raw.githubusercontent.com/mike-nott/web-mcp/main/companion/install/install.sh | bash
+#   — prompts for the relay secret, installs as systemd (Linux) or launchd (macOS)
+
+# 3. Verify from any MCP client:
+#    social_search { query: "test", platform: "discord", time: "month" }
+```
+
+**What the companion is and isn't:** it refuses anything that is not a GET under `discord.com/api/v10`, needs only Node ≥18 (zero npm dependencies), and never writes the Discord token to disk — the worker sends it per-request over the authenticated WebSocket. If no companion is connected, Discord search returns a readable error telling you to start one; every other platform is unaffected.
+
+Design history — including why Oxylabs residential proxies *don't* work (the CF-to-CF block is on TLS fingerprint, not IP) and the self-bot risk analysis — is in [docs/discord-research.md](docs/discord-research.md).
 
 Issues and ideas welcome.
 

@@ -58,6 +58,13 @@ Facts that are not guessable from vendor documentation — two of them actively 
 
 | Provider | Gotcha | Consequence in code |
 |---|---|---|
+| **Discord** | User-token auth is documented-endpoint, undocumented-auth: works today, not contractual | Responses read defensively; 401 names the token rotation fix; the whole platform is opt-in so a silent break never degrades other tools |
+| **Discord** | Search returns `messages` as an array of *groups* — a hit that is a reply carries its parent context | `flattenHits` picks the `hit: true` entry per group, falling back to the first |
+| **Discord** | A cold guild returns `202 Accepted` (code 110000) while the index warms | Backed off twice before surfacing an error naming the cause |
+| **Discord** | discord.com's Cloudflare edge 403s **any** request whose TLS handshake originates from workerd — direct `fetch`, `fetch` through an external proxy tunnel, any headers. The block is fingerprint-level, not IP-level: the same request through a residential proxy from a home IP gets 200 | The worker never makes the Discord request itself — `src/relay.ts` (Durable Object) forwards it over a WebSocket to the companion on a non-CF machine (`src/providers/proxy.ts`), which performs the HTTPS GET |
+| **Discord** | REST search ignores `after:`/`before:` date tokens embedded in the `content` param (0 hits where unfiltered had 2435) | Time windows use the documented `min_id` snowflake param (`timeFilterSnowflake`) |
+| **Discord relay** | DO hibernation mode ignores `addEventListener` on sockets — handlers silently never fire | `state.acceptWebSocket()` + `webSocketMessage()` class handler; auth state in `serializeAttachment`, not instance fields (which don't survive eviction) |
+| **Discord relay** | Deploys leave stale hibernated socket entries whose TCP peer is gone | Failover closes timed-out sockets (code 4004) so later calls skip straight to live companions |
 | **Reddit** | Tokens last **24h** (`expires_in: 86400`), not 1h | An earlier hardcoded 55-min TTL re-authenticated ~26×/day and triggered rate limiting. Lifetime is now read from the response |
 | **Reddit** | Datacenter IPs **must** use OAuth and a descriptive User-Agent | Anonymous fetches 403; the UA is configurable in `wrangler.toml` |
 | **Reddit** | Search is lexical, and a sentence-shaped query silently falls back to *popular* results | Descriptions teach keyword queries with BAD/GOOD pairs |
@@ -92,15 +99,15 @@ Two server-side properties turned out to decide whether a client works at all, b
 
 **SSE is not optional in practice.** Clients advertise `Accept: text/event-stream` first and open a `GET /mcp` stream. Returning JSON everywhere and `405` on `GET` is spec-legal but caused at least one client to reconnect in a loop. `POST` now answers with an SSE frame when asked, `GET` returns a keepalive stream, and heartbeats every 15s keep long calls (transcripts, bot-protection escalation) inside client idle timeouts.
 
-## Roadmap
+**Discord** shipped (`src/providers/discord.ts`, search-only, `platform: "discord"` on `social_search`). The journey in **[docs/discord-research.md](docs/discord-research.md)** went through three designs: local Playwright (rejected — second MCP server), worker + Oxylabs residential-proxy tunnel (rejected live — Discord's Cloudflare edge blocks workerd's TLS fingerprint regardless of exit IP), and the final shape: a **companion relay**. A small process on a machine you own (`companion/companion.mjs`, zero-dep Node) holds an outbound WebSocket to the `DiscordRelay` Durable Object (`src/relay.ts`); the worker forwards search GETs through it, so the HTTPS request to Discord originates from a non-Cloudflare host. Multiple companions rotate with failover. The user-token auth path remains non-contractual; the search endpoint itself is documented.
 
-**Discord** is the only outstanding source, and the only one with no sanctioned programmatic route — no search API, no public content, and bots need a per-server invite from an admin. The chosen design is a local Playwright process driving a real logged-in browser session, deliberately *outside* this worker: see **[docs/discord-research.md](docs/discord-research.md)** for the options rejected and why (datacenter IPs are the deciding factor).
 
 ## Layout
 
 ```
 src/
-  index.ts            fetch handler, JSON-RPC dispatch, SSE, CORS
+  index.ts            fetch handler, JSON-RPC dispatch, SSE, CORS, /relay route
+  relay.ts            DiscordRelay Durable Object — companion WebSocket rendezvous
   auth.ts             single-secret bearer auth
   capabilities.ts     which providers are configured
   budget.ts           per-provider daily ceilings
@@ -108,6 +115,11 @@ src/
   tools.ts            tool execution; ProviderError → isError result
   mcp/                protocol layer — types, errors, tool schemas & descriptions
   providers/          one file per upstream API, plus shared types.ts
+
+companion/
+  companion.mjs       local relay process (Node ≥18, zero deps) — connects out
+                      to the worker's /relay WebSocket, performs Discord GETs
+  install/            install.sh + systemd/launchd templates
 ```
 
 The JSON-RPC transport is hand-rolled: the official MCP SDK has Node-only dependencies and does not run on Workers.
