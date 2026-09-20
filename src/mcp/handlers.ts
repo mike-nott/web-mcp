@@ -568,7 +568,7 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		// Default to the cheap, high-volume platforms; YouTube stays opt-in because
 		// its search quota is ~90/day while Reddit and X are effectively unlimited.
 		// Discord stays opt-in too: user-token traffic is the volume-sensitive path
-		// (docs/discord-research.md), so it must never ride along on a default fan-out.
+		//, so it must never ride along on a default fan-out.
 		const cheap = available.filter((p) => p !== 'youtube' && p !== 'discord');
 		const defaultPlatform =
 			cheap.length === 2 ? 'both' : cheap.length === 1 ? cheap[0] : available[0];

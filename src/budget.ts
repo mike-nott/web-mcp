@@ -19,9 +19,8 @@ const SETTINGS: Record<
 > = {
 	discord: {
 		label: 'Discord API call',
-		// Low ceiling: user-token traffic is the volume-sensitive path (docs/
-		// discord-research.md) — searches are cached 1h, so normal use is a
-		// handful of calls a day. The cap exists as a runaway backstop.
+		// Low ceiling: user-token traffic is the volume-sensitive path — searches
+		// are cached 1h, so normal use is a handful of calls a day; runaway backstop.
 		fallbackLimit: 100,
 		envVar: 'DISCORD_DAILY_CALL_LIMIT',
 		advice:

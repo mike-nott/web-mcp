@@ -1,6 +1,6 @@
 // Discord request transport — relay DO edition.
 //
-// History (docs/discord-research.md has the full saga): every path that makes
+// History (the README has the full saga): every path that makes
 // the HTTP request originate from a Cloudflare Worker is blocked by Discord's
 // Cloudflare edge with a bare 403 — direct fetch, fetch via Oxylabs CONNECT
 // tunnel, even with perfect browser headers. The block is on workerd's TLS

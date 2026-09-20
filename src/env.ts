@@ -10,7 +10,7 @@ export interface Env {
 	EXA_API_KEY: string;
 	BRAVE_API_KEY: string;
 	TAVILY_API_KEY: string;
-	/** Dedicated Discord account token; user-token path (docs/discord-research.md). */
+	/** Dedicated Discord account token; user-token path. */
 	DISCORD_USER_TOKEN: string;
 	/** "auto" (default, prefers Tavily), "tavily", or "brave". */
 	KEYWORD_SEARCH_PROVIDER: string;

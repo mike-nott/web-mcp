@@ -7,7 +7,7 @@
 // user-token auth path is not, so responses are read defensively and 202 (index
 // warming, code 110000) is retried rather than surfaced as an error.
 //
-// Scope decision (docs/discord-research.md): search only — no threads, no
+// Scope decision: search only — no threads, no
 // history crawling. Engagement signals do not exist here: Discord search returns
 // message text without reactions, so score/comments are absent rather than
 // invented (the SearchResult fields are optional for exactly this).
@@ -226,13 +226,13 @@ function mapMessage(m: RawMessage, guildId: string): SearchResult {
 export async function discordSearch(env: Env, args: DiscordSearchArgs): Promise<SearchResult[]> {
 	if (!env.DISCORD_USER_TOKEN) {
 		throw new ProviderError(
-			'DISCORD_USER_TOKEN is not configured. See docs/discord-research.md for how to obtain it.'
+			'DISCORD_USER_TOKEN is not configured. See the README for how to obtain it.'
 		);
 	}
 	if (!env.DISCORD_RELAY_SECRET) {
 		throw new ProviderError(
 			'DISCORD_RELAY_SECRET is not configured. The Discord search request is relayed ' +
-				'through the local companion (docs/discord-research.md); the shared secret ' +
+				'through the local companion; the shared secret ' +
 				'authenticates that WebSocket.'
 		);
 	}
