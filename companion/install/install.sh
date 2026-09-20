@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # web-mcp Discord companion installer (Linux/macOS).
-#
-# Installs the companion as a system service, prompts for the three values it
-# needs, and writes secrets to a file readable only by the service user. The
-# companion itself is a single zero-dependency Node file.
+# Installs the companion as a system service, prompts for the relay secret,
+# and writes secrets to a file readable only by the service user (Linux) or
+# the installing user (macOS). The companion itself is a single
+# zero-dependency Node file.
 #
 # Usage:
 #   ./install.sh                     # interactive
@@ -11,7 +11,14 @@
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/mike-nott/web-mcp/main"
-COMPANION_DIR="/opt/web-mcp-companion"
+# System-wide path on Linux (owned by a dedicated service user); user-local on
+# macOS where launchd agents run as the installing user and sudo should not
+# be required.
+if [ "$(uname)" = "Darwin" ]; then
+	COMPANION_DIR="$HOME/.local/share/web-mcp-companion"
+else
+	COMPANION_DIR="/opt/web-mcp-companion"
+fi
 ENV_FILE="/etc/web-mcp-companion.env"
 SERVICE_USER="webmcp"
 
@@ -24,6 +31,11 @@ if [ -z "${SECRET:-}" ]; then
 fi
 [ -n "$SECRET" ] || { echo "secret required"; exit 1; }
 
+# Normalize the worker URL to wss://<host>/relay, accepting any of:
+# https://host, https://host/relay, wss://host, wss://host/relay, bare host.
+WORKER_HOST="$(printf '%s' "$RELAY_URL" | sed -E 's|^[a-z]+://||; s|/relay/?$||')"
+RELAY_WS_URL="wss://${WORKER_HOST}/relay"
+
 command -v node >/dev/null || { echo "node >= 18 required (https://nodejs.org)"; exit 1; }
 
 # --- files --------------------------------------------------------------
@@ -32,11 +44,10 @@ curl -fsSL "$REPO_RAW/companion/companion.mjs" -o "$COMPANION_DIR/companion.mjs"
 
 if [ "$(uname)" = "Darwin" ]; then
 	# launchd: config in the installing user's home, plist in ~/Library/LaunchAgents
+	mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 	CONFIG="$HOME/.web-mcp-relay.json"
 	umask 077
-	printf '{"url": "wss://%s/relay", "secret": "%s"}\n' \
-		"$(echo "$RELAY_URL" | sed 's|https\?://||; s|/relay$||; s|^wss\?://||')" "$SECRET" \
-		> "$CONFIG"
+	printf '{"url": "%s", "secret": "%s"}\n' "$RELAY_WS_URL" "$SECRET" > "$CONFIG"
 	chmod 600 "$CONFIG"
 	curl -fsSL "$REPO_RAW/companion/install/com.github.mike-nott.web-mcp-companion.plist" \
 		-o "$HOME/Library/LaunchAgents/com.github.mike-nott.web-mcp-companion.plist"
@@ -54,7 +65,7 @@ install -d -o "$SERVICE_USER" "$COMPANION_DIR"
 
 umask 077
 cat > "$ENV_FILE" <<EOF
-RELAY_URL=wss://$(echo "$RELAY_URL" | sed 's|https\?://||; s|/relay$||')/relay
+RELAY_URL=$RELAY_WS_URL
 DISCORD_RELAY_SECRET=$SECRET
 EOF
 chown root:"$SERVICE_USER" "$ENV_FILE"
