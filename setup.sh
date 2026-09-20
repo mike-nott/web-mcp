@@ -25,18 +25,39 @@ say "prerequisites ok"
 # own namespace or it would share cache/budget state with strangers.
 create_kv() {
 	local out id
-	out="$(npx wrangler kv namespace create KV 2>&1)" || { echo "$out"; exit 1; }
+	out="$(npx wrangler kv namespace create KV 2>&1)" || true
 	id="$(printf '%s' "$out" | grep -oE '"id": *"[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}')"
 	[ -n "$id" ] || id="$(printf '%s' "$out" | grep -oE 'id = "[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}')"
-	[ -n "$id" ] || { echo "Could not parse the new namespace id from:"; echo "$out"; exit 1; }
+	# Title collision: "A KV namespace with the title "KV" already exists."
+	# The account already has one (this script, or an earlier manual deploy) —
+	# offer reuse before failing; a fresh namespace is rarely what the user
+	# actually needs on a re-run.
+	if [ -z "$id" ] && printf '%s' "$out" | grep -q 'already exists'; then
+		existing="$(npx wrangler kv namespace list 2>/dev/null \
+			| python3 -c 'import json,sys; print(next((n["id"] for n in json.load(sys.stdin) if n["title"]=="KV"), ""))' 2>/dev/null)"
+		if [ -n "$existing" ]; then
+			tty_read "A KV namespace titled \"KV\" already exists ($existing). Reuse it? [Y/n] " ans
+			if [ "${ans:-y}" != "n" ]; then
+				id="$existing"
+			else
+				# Fresh namespace under a unique title; wire it in as usual.
+				local title="web-mcp-kv-$(date +%s)"
+				out="$(npx wrangler kv namespace create "$title" 2>&1)" || { echo "$out" | tail -5; exit 1; }
+				id="$(printf '%s' "$out" | grep -oE '[a-f0-9]{20,}' | head -1)"
+				[ -n "$id" ] || { echo "Could not parse the new namespace id from:"; echo "$out" | tail -5; exit 1; }
+			fi
+		fi
+	fi
+	[ -n "$id" ] || { echo "Could not create or find a KV namespace:"; echo "$out" | tail -5; exit 1; }
 	sed -i.bak -E "s|^(id = \")[a-f0-9]+(\")|\\1${id}\\2|" wrangler.toml && rm wrangler.toml.bak
-	say "KV namespace created ($id) and wired into wrangler.toml"
+	say "KV namespace wired into wrangler.toml ($id)"
 }
 
 CURRENT_KV_ID="$(sed -nE 's/^id = "([a-f0-9]+)"/\1/p' wrangler.toml | head -1)"
 if [ -n "${KV_ID:-}" ]; then
 	say "using KV id from env (\$KV_ID)"
 elif printf '%s' "$CURRENT_KV_ID" | grep -q '^f420d454b34a4bffbdde610ff23f71d5$'; then
+	# Fresh clone: wrangler.toml still carries the repo author's namespace.
 	create_kv
 else
 	tty_read "KV namespace already configured ($CURRENT_KV_ID). Create a fresh one instead? [y/N] " ans
