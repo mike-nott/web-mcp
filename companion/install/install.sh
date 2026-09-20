@@ -37,11 +37,17 @@ token_ok() {
 	[ "$(printf '%s' "$trimmed" | tr -cd '[:alnum:]_.-=' | wc -c)" -eq "${#trimmed}" ]
 }
 if [ -z "${SECRET:-}" ]; then
-	# Read one line, validate it looks like a token, and re-prompt rather
-	# than abort: pasting multi-line clipboard junk must not corrupt the
-	# config JSON this value gets written into.
+	# Read from the TERMINAL, not stdin: `curl … | bash` makes stdin the pipe
+	# carrying the script itself, so a plain `read` would consume installer
+	# lines as the answer — silently on the first versions, and as an infinite
+	# re-prompt loop once validation landed. /dev/tty is the keyboard either
+	# way; without a tty at all (CI), exit with a clear message rather than spin.
 	while :; do
-		read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET
+		if ! read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET </dev/tty; then
+			echo "No terminal available for the prompt. Re-run interactively, or pass the token directly:" >&2
+			echo "  curl -fsSL <installer-url> | SECRET=webmcp_... bash" >&2
+			exit 1
+		fi
 		if token_ok "$SECRET"; then break; fi
 		echo "That doesn't look like a token. Paste just the token itself, e.g. webmcp_... — one line, no quotes."
 	done
