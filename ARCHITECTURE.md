@@ -122,6 +122,11 @@ companion/
   companion.mjs       local relay process (Node ≥18, zero deps) — connects out
                       to the worker's /relay WebSocket, performs Discord GETs
   install/            install.sh + systemd/launchd templates
-```
+
+setup.sh               one-command first-time setup: KV namespace, generated
+                      MCP_AUTH_TOKEN, deploy, optional Discord token, optional
+                      companion install on the same machine (token passed via
+                      env — never typed twice). Re-run safe; existing tokens
+                      and namespaces are kept unless explicitly rotated.
 
 The JSON-RPC transport is hand-rolled: the official MCP SDK has Node-only dependencies and does not run on Workers.

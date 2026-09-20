@@ -283,21 +283,18 @@ MCP clients ──▶ CF Worker ──▶ Durable Object ──WebSocket──�
 
 Multiple companions can connect simultaneously — requests rotate across them and fail over if one goes down. Any companion can serve any request, so install it on every machine you have.
 
-**Setup (two pieces, one shared secret):**
+**Setup** — the companion needs the worker to already have `DISCORD_USER_TOKEN` set (see below for how to get it). Then, on each machine you want as a companion (Linux or macOS):
 
 ```bash
-# 1. On the worker: the Discord account token (see below for how to get it)
-echo "<token>" | npx wrangler secret put DISCORD_USER_TOKEN
-
-# 2. On each machine you want as a companion (Linux or macOS):
 curl -fsSL https://raw.githubusercontent.com/mike-nott/web-mcp/main/companion/install/install.sh | bash
 #   — asks for your MCP_AUTH_TOKEN (the same token your MCP clients use;
 #     there is no third secret to create), then installs as systemd
 #     (Linux) or launchd (macOS)
-
-# 3. Verify from any MCP client:
-#    social_search { query: "test", platform: "discord", time: "month" }
 ```
+
+Running `./setup.sh` in a fresh clone does all of this — worker deploy, Discord token, and the companion on that machine — in one pass, passing the token along so it is never typed twice. The `curl | bash` form above is for adding *more* machines later.
+
+Verify from any MCP client: `social_search { query: "test", platform: "discord", time: "month" }`
 
 **Getting `DISCORD_USER_TOKEN`:** log into a *dedicated* Discord account (never your primary) in a browser, open DevTools → Network → click any `discord.com/api` request → Request Headers → copy the `Authorization` value. It rotates if that account changes its password or hits "log out all devices" — the tool's 401 message names the fix. A search is only that account's own servers, kept low-volume by a 100/day cap; there are no reactions in search results, so results carry no score.
 
