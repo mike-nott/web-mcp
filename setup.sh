@@ -26,15 +26,18 @@ say "prerequisites ok"
 create_kv() {
 	local out id
 	out="$(npx wrangler kv namespace create KV 2>&1)" || true
-	id="$(printf '%s' "$out" | grep -oE '"id": *"[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}')"
-	[ -n "$id" ] || id="$(printf '%s' "$out" | grep -oE 'id = "[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}')"
+	# grep|head exit nonzero on no-match; || true keeps set -e from aborting.
+	id="$(printf '%s' "$out" | grep -oE '"id": *"[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}' || true)"
+	[ -n "$id" ] || id="$(printf '%s' "$out" | grep -oE 'id = "[a-f0-9]+"' | head -1 | grep -oE '[a-f0-9]{20,}' || true)"
 	# Title collision: "A KV namespace with the title "KV" already exists."
 	# The account already has one (this script, or an earlier manual deploy) —
 	# offer reuse before failing; a fresh namespace is rarely what the user
 	# actually needs on a re-run.
 	if [ -z "$id" ] && printf '%s' "$out" | grep -q 'already exists'; then
+		# || true: under set -e a failed pipeline inside $(...) aborts the script
+		# silently — a parse error here must degrade to "not found", not kill setup.
 		existing="$(npx wrangler kv namespace list 2>/dev/null \
-			| python3 -c 'import json,sys; print(next((n["id"] for n in json.load(sys.stdin) if n["title"]=="KV"), ""))' 2>/dev/null)"
+			| python3 -c 'import json,sys; print(next((n["id"] for n in json.load(sys.stdin) if n["title"]=="KV"), ""))' 2>/dev/null || true)"
 		if [ -n "$existing" ]; then
 			tty_read "A KV namespace titled \"KV\" already exists ($existing). Reuse it? [Y/n] " ans
 			if [ "${ans:-y}" != "n" ]; then
@@ -43,7 +46,7 @@ create_kv() {
 				# Fresh namespace under a unique title; wire it in as usual.
 				local title="web-mcp-kv-$(date +%s)"
 				out="$(npx wrangler kv namespace create "$title" 2>&1)" || { echo "$out" | tail -5; exit 1; }
-				id="$(printf '%s' "$out" | grep -oE '[a-f0-9]{20,}' | head -1)"
+				id="$(printf '%s' "$out" | grep -oE '[a-f0-9]{20,}' | head -1 || true)"
 				[ -n "$id" ] || { echo "Could not parse the new namespace id from:"; echo "$out" | tail -5; exit 1; }
 			fi
 		fi
@@ -68,8 +71,8 @@ fi
 say "deploying worker (secrets are set right after)"
 DEPLOY_OUT="$(npm run deploy 2>&1)" || { echo "$DEPLOY_OUT" | tail -20; exit 1; }
 printf '%s\n' "$DEPLOY_OUT" | tail -5
-WORKER_URL="$(printf '%s' "$DEPLOY_OUT" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1)"
-[ -n "$WORKER_URL" ] || WORKER_URL="https://$(sed -nE 's/^name = "(.+)"$/\1/p' wrangler.toml | head -1).$(npx wrangler whoami 2>/dev/null | grep -oE '[a-z0-9-]+\.workers\.dev' | head -1)"
+WORKER_URL="$(printf '%s' "$DEPLOY_OUT" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1 || true)"
+[ -n "$WORKER_URL" ] || WORKER_URL="https://$(sed -nE 's/^name = "(.+)"$/\1/p' wrangler.toml | head -1).$(npx wrangler whoami 2>/dev/null | grep -oE '[a-z0-9-]+\.workers\.dev' | head -1 || true)"
 say "worker deployed: $WORKER_URL"
 
 # --- MCP_AUTH_TOKEN ---------------------------------------------------------
