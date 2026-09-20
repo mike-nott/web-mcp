@@ -27,9 +27,18 @@ echo "==> web-mcp Discord companion installer"
 # --- values -------------------------------------------------------------
 RELAY_URL="${RELAY_URL:-https://web-mcp.nott-258.workers.dev/relay}"
 if [ -z "${SECRET:-}" ]; then
-	read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET
+	# Read one line, validate it looks like a token, and re-prompt rather
+	# than abort: pasting multi-line clipboard junk must not corrupt the
+	# config JSON this value gets written into.
+	while :; do
+		read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET
+		SECRET="${SECRET%%[[:space:]]*}" # tolerate a trailing newline/space
+		if [ -n "$SECRET" ] && [ "${#SECRET}" -ge 20 ] && [ "$(printf '%s' "$SECRET" | tr -cd '[:alnum:]_.-=' | wc -c)" -eq "${#SECRET}" ]; then
+			break
+		fi
+		echo "That doesn't look like a token (got ${#SECRET} chars with unexpected characters). Paste just the token itself, e.g. webmcp_... — one line, no quotes."
+	done
 fi
-[ -n "$SECRET" ] || { echo "token required"; exit 1; }
 
 # Normalize the worker URL to wss://<host>/relay, accepting any of:
 # https://host, https://host/relay, wss://host, wss://host/relay, bare host.

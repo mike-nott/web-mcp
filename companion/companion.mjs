@@ -32,8 +32,17 @@ function loadConfig() {
 	let file = {};
 	try {
 		file = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
-	} catch {
-		// No config file — env vars only.
+	} catch (err) {
+		if (err?.code === 'ENOENT') {
+			// No config file — env vars only.
+		} else {
+			// A config file that exists but doesn't parse means a bad install or
+			// a corrupted edit; "missing token" would send the user hunting the
+			// wrong problem.
+			console.error(`[relay] ${CONFIG_PATH} is not valid JSON: ${err.message}`);
+			console.error('[relay] fix or delete the file, then restart the companion');
+			process.exit(1);
+		}
 	}
 	return {
 		url: process.env.RELAY_URL ?? file.url ?? DEFAULT_URL,
