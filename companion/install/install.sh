@@ -24,21 +24,33 @@ SERVICE_USER="webmcp"
 
 echo "==> web-mcp Discord companion installer"
 
-# --- values -------------------------------------------------------------
 RELAY_URL="${RELAY_URL:-https://web-mcp.nott-258.workers.dev/relay}"
+
+# A well-formed worker token: >=20 chars, single line, only the characters
+# the token generator can emit. Used for both the interactive prompt and a
+# SECRET passed via environment, so neither path can write a bad config.
+token_ok() {
+	[ -n "$1" ] || return 1
+	local trimmed
+	trimmed="${1%%[[:space:]]*}"
+	[ "${#trimmed}" -ge 20 ] || return 1
+	[ "$(printf '%s' "$trimmed" | tr -cd '[:alnum:]_.-=' | wc -c)" -eq "${#trimmed}" ]
+}
 if [ -z "${SECRET:-}" ]; then
 	# Read one line, validate it looks like a token, and re-prompt rather
 	# than abort: pasting multi-line clipboard junk must not corrupt the
 	# config JSON this value gets written into.
 	while :; do
 		read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET
-		SECRET="${SECRET%%[[:space:]]*}" # tolerate a trailing newline/space
-		if [ -n "$SECRET" ] && [ "${#SECRET}" -ge 20 ] && [ "$(printf '%s' "$SECRET" | tr -cd '[:alnum:]_.-=' | wc -c)" -eq "${#SECRET}" ]; then
-			break
-		fi
-		echo "That doesn't look like a token (got ${#SECRET} chars with unexpected characters). Paste just the token itself, e.g. webmcp_... — one line, no quotes."
+		if token_ok "$SECRET"; then break; fi
+		echo "That doesn't look like a token. Paste just the token itself, e.g. webmcp_... — one line, no quotes."
 	done
 fi
+# An env-provided SECRET skips the prompt, so it needs the same check —
+# a stale or unrelated ambient variable must not silently produce a
+# config the companion rejects (this bit a real install: SECRET was set
+# in the shell from earlier testing and never prompted).
+token_ok "$SECRET" || { echo "SECRET env var is set but is not a token (webmcp_...). Unset it and rerun: unset SECRET" >&2; exit 1; }
 
 # Normalize the worker URL to wss://<host>/relay, accepting any of:
 # https://host, https://host/relay, wss://host, wss://host/relay, bare host.
@@ -56,7 +68,12 @@ if [ "$(uname)" = "Darwin" ]; then
 	mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 	CONFIG="$HOME/.web-mcp-relay.json"
 	umask 077
-	printf '{"url": "%s", "token": "%s"}\n' "$RELAY_WS_URL" "$SECRET" > "$CONFIG"
+	# node writes the JSON: correct escaping for any value, and node is
+	# already a hard dependency of the companion itself.
+	node -e '
+		const fs = require("fs");
+		fs.writeFileSync(process.argv[1], JSON.stringify({ url: process.argv[2], token: process.argv[3] }));
+	' "$CONFIG" "$RELAY_WS_URL" "$SECRET"
 	chmod 600 "$CONFIG"
 	curl -fsSL "$REPO_RAW/companion/install/com.github.mike-nott.web-mcp-companion.plist" \
 		-o "$HOME/Library/LaunchAgents/com.github.mike-nott.web-mcp-companion.plist"
