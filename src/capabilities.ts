@@ -42,11 +42,12 @@ export function detectCapabilities(env: Env): Capabilities {
 		brave: set(env.BRAVE_API_KEY),
 		tavily: set(env.TAVILY_API_KEY),
 		// Discord search is relayed through the local companion over a
-		// Durable Object WebSocket (src/relay.ts); both the user token and the
-		// relay shared secret must be present, or the tool would advertise and
-		// then fail. A live companion is not part of this gate: its absence
-		// surfaces as a readable per-search error, not a missing tool.
-		discord: set(env.DISCORD_USER_TOKEN) && set(env.DISCORD_RELAY_SECRET),
+		// Durable Object WebSocket (src/relay.ts). The companion authenticates
+		// with MCP_AUTH_TOKEN — the same secret the MCP clients use — so the
+		// only gate here is the Discord user token. A live companion is not
+		// part of this gate: its absence surfaces as a readable per-search
+		// error, not a missing tool.
+		discord: set(env.DISCORD_USER_TOKEN),
 		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
 		// missing means keyword search is genuinely unavailable, not silently
 		// served by the other one.

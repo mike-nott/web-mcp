@@ -229,13 +229,6 @@ export async function discordSearch(env: Env, args: DiscordSearchArgs): Promise<
 			'DISCORD_USER_TOKEN is not configured. See the README for how to obtain it.'
 		);
 	}
-	if (!env.DISCORD_RELAY_SECRET) {
-		throw new ProviderError(
-			'DISCORD_RELAY_SECRET is not configured. The Discord search request is relayed ' +
-				'through the local companion; the shared secret ' +
-				'authenticates that WebSocket.'
-		);
-	}
 	await consumeBudget(env, 'discord');
 
 	// No guild specified: search every guild the account is in and merge.

@@ -3,7 +3,7 @@
 # Secrets (set once with `echo "value" | wrangler secret put NAME`):
 #   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY,
 #   FIRECRAWL_API_KEY, YOUTUBE_API_KEY, SUPADATA_API_KEY, EXA_API_KEY, BRAVE_API_KEY,
-#   TAVILY_API_KEY, DISCORD_USER_TOKEN, DISCORD_RELAY_SECRET
+#   TAVILY_API_KEY, DISCORD_USER_TOKEN
 # Local dev reads the same names from .dev.vars (gitignored).
 # Deploying? See README — replace the KV namespace id below with your own.
 

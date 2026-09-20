@@ -10,9 +10,9 @@
 // So the request is relayed to the local companion on Mike's Mac, which holds
 // an outbound WebSocket to the DiscordRelay Durable Object (src/relay.ts). The
 // DO forwards { path, headers } down the socket; the companion runs the real
-// HTTPS request and returns the body. The companion authenticates with
-// DISCORD_RELAY_SECRET and refuses anything that is not a GET to
-// discord.com/api — it is a dumb relay, not an open proxy.
+// HTTPS request and returns the body. The companion authenticates with the
+// MCP_AUTH_TOKEN (same as MCP clients) and refuses anything that is not a GET
+// to discord.com/api — it is a dumb relay, not an open proxy.
 
 import type { Env } from '../env';
 
@@ -30,9 +30,9 @@ export async function relayDiscordGet(
 	path: string,
 	headers: Record<string, string>
 ): Promise<RelayResult> {
-	if (!env.DISCORD_RELAY_SECRET) {
-		throw new Error('DISCORD_RELAY_SECRET is not configured.');
-	}
+	// No separate relay secret: the companion authenticates with MCP_AUTH_TOKEN
+	// inside the DO; from here the only requirement is that a Discord token is
+	// configured (capability gate guarantees it, checked defensively anyway).
 	const id = env.DISCORD_RELAY.idFromName('singleton');
 	const stub = env.DISCORD_RELAY.get(id);
 	// The DO exposes its own fetch surface; we call its internal handler via a

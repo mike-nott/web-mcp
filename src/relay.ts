@@ -24,8 +24,9 @@
 //   companion -> DO : { type: "response", id, status, body }
 //   companion -> DO : { type: "ping" }   ->  { type: "ready" }
 //
-// Auth: DISCORD_RELAY_SECRET (worker secret), constant-time compared; auth'd
-// sockets are tagged via serializeAttachment. The DO only forwards GETs to
+// Auth: MCP_AUTH_TOKEN — the same secret the MCP clients use, so a new user
+// has nothing extra to generate. Constant-time compared; auth'd sockets are
+// tagged via serializeAttachment. The DO only forwards GETs to
 // paths under /api — the companion refuses anything else, so a compromised
 // worker cannot turn it into an open proxy.
 
@@ -97,16 +98,21 @@ export class DiscordRelay {
 				return;
 			}
 			case 'auth': {
-				const expected = this.env.DISCORD_RELAY_SECRET ?? '';
+				// The companion authenticates with the same MCP_AUTH_TOKEN the MCP
+				// clients use — one secret for "machines I trust talking to my
+				// worker", no separate relay secret to generate, paste, or mix up.
+				// (It grants no extra powers: the companion path only ever relays
+				// Discord GETs.)
+				const expected = this.env.MCP_AUTH_TOKEN ?? '';
 				const got = msg.secret ?? '';
 				const match =
 					expected.length === got.length && [...expected].every((c, i) => c === got[i]);
 				if (!match) {
-					ws.close(4003, 'auth failed');
+					ws.close(4003, 'auth failed — expected the same MCP_AUTH_TOKEN your MCP clients use');
 					return;
 				}
-				// Re-tag with the authenticated attachment: getWebSockets('companion')
-				// from now on returns this socket after any eviction.
+				// Tag the socket as authenticated via the attachment; getWebSockets(
+				// 'companion') finds it after any hibernation eviction.
 				ws.serializeAttachment({ auth: true } satisfies { auth: boolean });
 				this.safeSend(ws, { type: 'ready' });
 				return;

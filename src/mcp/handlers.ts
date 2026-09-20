@@ -13,7 +13,7 @@ const PLATFORM_ENV: Record<string, string> = {
 	reddit: 'REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET',
 	x: 'TWITTERAPI_IO_KEY',
 	youtube: 'YOUTUBE_API_KEY',
-	discord: 'DISCORD_USER_TOKEN and DISCORD_RELAY_SECRET (plus a running companion — see README)'
+	discord: 'DISCORD_USER_TOKEN (plus a running companion — see README)'
 };
 
 export interface SearchArgs {

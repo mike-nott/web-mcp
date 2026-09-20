@@ -27,9 +27,9 @@ echo "==> web-mcp Discord companion installer"
 # --- values -------------------------------------------------------------
 RELAY_URL="${RELAY_URL:-https://web-mcp.nott-258.workers.dev/relay}"
 if [ -z "${SECRET:-}" ]; then
-	read -rp "DISCORD_RELAY_SECRET (from your worker: wrangler secret list): " SECRET
+	read -rp "MCP_AUTH_TOKEN (the same token your MCP clients use for this worker): " SECRET
 fi
-[ -n "$SECRET" ] || { echo "secret required"; exit 1; }
+[ -n "$SECRET" ] || { echo "token required"; exit 1; }
 
 # Normalize the worker URL to wss://<host>/relay, accepting any of:
 # https://host, https://host/relay, wss://host, wss://host/relay, bare host.
@@ -47,7 +47,7 @@ if [ "$(uname)" = "Darwin" ]; then
 	mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 	CONFIG="$HOME/.web-mcp-relay.json"
 	umask 077
-	printf '{"url": "%s", "secret": "%s"}\n' "$RELAY_WS_URL" "$SECRET" > "$CONFIG"
+	printf '{"url": "%s", "token": "%s"}\n' "$RELAY_WS_URL" "$SECRET" > "$CONFIG"
 	chmod 600 "$CONFIG"
 	curl -fsSL "$REPO_RAW/companion/install/com.github.mike-nott.web-mcp-companion.plist" \
 		-o "$HOME/Library/LaunchAgents/com.github.mike-nott.web-mcp-companion.plist"
@@ -66,7 +66,7 @@ install -d -o "$SERVICE_USER" "$COMPANION_DIR"
 umask 077
 cat > "$ENV_FILE" <<EOF
 RELAY_URL=$RELAY_WS_URL
-DISCORD_RELAY_SECRET=$SECRET
+MCP_AUTH_TOKEN=$SECRET
 EOF
 chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"

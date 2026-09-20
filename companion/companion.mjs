@@ -9,7 +9,7 @@
 // returns the body. See src/relay.ts (DO) and src/providers/proxy.ts (worker side).
 //
 // Security model:
-//   - Authenticates to the worker with DISCORD_RELAY_SECRET (env or config file).
+//   - Authenticates to the worker with MCP_AUTH_TOKEN (env or config file),
 //   - Only ever performs GETs to https://discord.com/api/v10 — refuses any
 //     other scheme, host, or method. A compromised worker cannot turn this
 //     into an open proxy.
@@ -37,13 +37,20 @@ function loadConfig() {
 	}
 	return {
 		url: process.env.RELAY_URL ?? file.url ?? DEFAULT_URL,
-		secret: process.env.DISCORD_RELAY_SECRET ?? file.secret ?? ''
+		// Same token the MCP clients use — one secret for "my machines talk to
+		// my worker". No separate relay secret exists.
+		secret:
+			process.env.MCP_AUTH_TOKEN ??
+			process.env.DISCORD_RELAY_SECRET ?? // legacy name, still accepted
+			file.token ??
+			file.secret ?? // legacy config field
+			''
 	};
 }
 
 const { url, secret } = loadConfig();
 if (!secret) {
-	console.error(`Missing DISCORD_RELAY_SECRET (env var or "secret" in ${CONFIG_PATH})`);
+	console.error(`Missing MCP_AUTH_TOKEN (env var or "token" in ${CONFIG_PATH})`);
 	process.exit(1);
 }
 

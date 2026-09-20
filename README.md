@@ -274,12 +274,10 @@ Multiple companions can connect simultaneously — requests rotate across them a
 **Setup:**
 
 ```bash
-# 1. On the worker side (once): a shared secret for the companion WebSocket
-echo "relay-$(openssl rand -hex 24)" | npx wrangler secret put DISCORD_RELAY_SECRET
-
-# 2. On each machine you want as a companion (Linux or macOS):
+# On each machine you want as a companion (Linux or macOS):
 curl -fsSL https://raw.githubusercontent.com/mike-nott/web-mcp/main/companion/install/install.sh | bash
-#   — prompts for the relay secret, installs as systemd (Linux) or launchd (macOS)
+#   — asks for your MCP_AUTH_TOKEN (the same token your MCP clients use —
+#     no new secret to create), installs as systemd (Linux) or launchd (macOS)
 
 # 3. Verify from any MCP client:
 #    social_search { query: "test", platform: "discord", time: "month" }

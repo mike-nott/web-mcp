@@ -24,7 +24,6 @@ export interface Env {
 	TAVILY_DAILY_LIMIT: string;
 	DISCORD_DAILY_CALL_LIMIT: string;
 	/** Shared secret the local companion presents to the relay DO. */
-	DISCORD_RELAY_SECRET: string;
 	/** The DiscordRelay Durable Object binding. */
 	DISCORD_RELAY: DurableObjectNamespace;
 }
