@@ -2,17 +2,17 @@
 // model sees one consistent structure regardless of source — and the engagement
 // signals (score, comments, date) survive intact for it to weigh.
 
-export type Platform = 'reddit' | 'x' | 'youtube';
+export type Platform = 'reddit' | 'x' | 'youtube' | 'discord';
 
 export interface SearchResult {
 	platform: Platform;
 	id: string;
 	title?: string;
 	text: string;
-	/** Upvotes on Reddit, likes on X and YouTube. */
-	score: number;
-	/** Comment count on Reddit/YouTube, reply count on X. */
-	comments: number;
+	/** Upvotes on Reddit, likes on X and YouTube; absent on Discord (search exposes no reactions). */
+	score?: number;
+	/** Comment count on Reddit/YouTube, reply count on X; absent on Discord. */
+	comments?: number;
 	/** u/user, @handle, or channel name. */
 	author: string;
 	date: string;

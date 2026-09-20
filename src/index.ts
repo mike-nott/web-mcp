@@ -1,8 +1,8 @@
 // web-mcp — thin MCP server (Streamable HTTP, JSON responses only) for walled
 // web content.
 //
-// Deliberately STATELESS: no sessions. The bearer token is the only thing that
-// grants access, so a session id would add no security — and requiring one
+// Deliberately STATELESS: no sessions. The bearer token is the only thing
+// that grants access, so a session id would add no security — and requiring one
 // silently breaks clients that don't echo the header back (Jan, for one:
 // initialize succeeded, every later call returned "Missing Mcp-Session-Id", and
 // because that is an HTTP 200 the user just saw a server with no tools). The
@@ -18,6 +18,7 @@ import { MCP_ERROR_CODES, rpcError } from './mcp/errors';
 import { handleInitialize, handleToolsList, validateToolCall } from './mcp/handlers';
 import { authenticateRequest } from './auth';
 import { detectCapabilities } from './capabilities';
+import { DiscordRelay } from './relay';
 import {
 	runFetchPage,
 	runFindCommunities,
@@ -25,6 +26,9 @@ import {
 	runSocialSearch,
 	runWebSearch
 } from './tools';
+
+// The Durable Object the DO binding in wrangler.toml points at.
+export { DiscordRelay };
 
 // Wildcard is safe: CORS is not the access control here — the bearer token is,
 // and a browser cannot attach it without the user configuring the client.
@@ -219,6 +223,14 @@ async function handlePost(request: Request, env: Env): Promise<Response> {
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const { pathname } = new URL(request.url);
+		// Companion relay: a single global DO instance holds the Mac's socket.
+		// Auth is the relay secret (checked inside the DO), not the MCP token —
+		// the companion is not an MCP client.
+		if (pathname === '/relay') {
+			const id = env.DISCORD_RELAY.idFromName('singleton');
+			const stub = env.DISCORD_RELAY.get(id);
+			return stub.fetch(request);
+		}
 		if (pathname !== '/mcp') return new Response('Not Found', { status: 404 });
 		switch (request.method) {
 			case 'POST':

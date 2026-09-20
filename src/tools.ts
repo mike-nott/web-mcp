@@ -23,6 +23,7 @@ import { redditFindCommunities, redditSearch, redditThread } from './providers/r
 import type { SearchResult } from './providers/types';
 import { xSearch, xThread } from './providers/x';
 import { youtubeSearch, youtubeThread } from './providers/youtube';
+import { discordSearch } from './providers/discord';
 import { assertPublicHttpsUrl, directFetch } from './providers/page';
 import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
@@ -55,6 +56,19 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	if (wants('reddit')) tasks.push({ platform: 'reddit', run: redditSearch(env, args) });
 	if (wants('x')) tasks.push({ platform: 'x', run: xSearch(env, args) });
 	if (wants('youtube')) tasks.push({ platform: 'youtube', run: youtubeSearch(env, args) });
+	// Opt-in only: validation ensures 'discord' is never reachable via 'both'/'all'.
+	if (args.platform === 'discord') {
+		tasks.push({
+			platform: 'discord',
+			run: discordSearch(env, {
+				query: args.query,
+				guild: args.guild,
+				time: args.time,
+				sort: args.sort,
+				limit: args.limit
+			})
+		});
+	}
 
 	const settled = await Promise.allSettled(tasks.map((t) => t.run));
 	const results: SearchResult[] = [];

@@ -3,7 +3,7 @@
 # Secrets (set once with `echo "value" | wrangler secret put NAME`):
 #   MCP_AUTH_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY,
 #   FIRECRAWL_API_KEY, YOUTUBE_API_KEY, SUPADATA_API_KEY, EXA_API_KEY, BRAVE_API_KEY,
-#   TAVILY_API_KEY
+#   TAVILY_API_KEY, DISCORD_USER_TOKEN, DISCORD_RELAY_SECRET
 # Local dev reads the same names from .dev.vars (gitignored).
 # Deploying? See README — replace the KV namespace id below with your own.
 
@@ -27,6 +27,12 @@ SUPADATA_DAILY_LIMIT = "300"
 EXA_DAILY_CALL_LIMIT = "5000"
 BRAVE_DAILY_CALL_LIMIT = "500"
 TAVILY_DAILY_LIMIT = "3000"
+# Discord user-token search through the companion relay (docs/discord-research.md).
+# Low ceiling on purpose: user-token volume is the risk-sensitive path, and
+# search results are KV-cached 1h, so ordinary use is a handful of calls per day.
+# Note an unscoped search costs one call per guild the account has joined.
+# Set to "0" to disable the cap.
+DISCORD_DAILY_CALL_LIMIT = "100"
 # Which engine backs web_search mode "keyword": auto | tavily | brave | both.
 # "both" queries them in parallel and merges: the indexes are largely disjoint
 # so recall roughly doubles, and a URL found by both carries Brave's publication
@@ -34,6 +40,15 @@ TAVILY_DAILY_LIMIT = "3000"
 # each engine per search, so Tavily's free tier alone will not cover usage.
 # Switch to "auto" (Tavily first, Brave fallback) to run on the free tier.
 KEYWORD_SEARCH_PROVIDER = "both"
+
+[durable_objects]
+bindings = [
+  { name = "DISCORD_RELAY", class_name = "DiscordRelay" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DiscordRelay"]
 
 [[kv_namespaces]]
 binding = "KV"

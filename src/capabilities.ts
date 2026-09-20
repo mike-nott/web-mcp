@@ -20,6 +20,8 @@ export interface Capabilities {
 	/** Keyword web search engines. */
 	brave: boolean;
 	tavily: boolean;
+	/** Dedicated-account guild message search. */
+	discord: boolean;
 	/** True when either keyword engine is usable under the current preference. */
 	keyword: boolean;
 }
@@ -39,6 +41,12 @@ export function detectCapabilities(env: Env): Capabilities {
 		exa: set(env.EXA_API_KEY),
 		brave: set(env.BRAVE_API_KEY),
 		tavily: set(env.TAVILY_API_KEY),
+		// Discord search is relayed through the local companion over a
+		// Durable Object WebSocket (src/relay.ts); both the user token and the
+		// relay shared secret must be present, or the tool would advertise and
+		// then fail. A live companion is not part of this gate: its absence
+		// surfaces as a readable per-search error, not a missing tool.
+		discord: set(env.DISCORD_USER_TOKEN) && set(env.DISCORD_RELAY_SECRET),
 		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
 		// missing means keyword search is genuinely unavailable, not silently
 		// served by the other one.
@@ -55,10 +63,11 @@ export function availableSearchModes(caps: Capabilities): Array<'keyword' | 'sem
 }
 
 /** Social platforms available for search/threads, in preference order. */
-export function availablePlatforms(caps: Capabilities): Array<'reddit' | 'x' | 'youtube'> {
-	const list: Array<'reddit' | 'x' | 'youtube'> = [];
+export function availablePlatforms(caps: Capabilities): Array<'reddit' | 'x' | 'youtube' | 'discord'> {
+	const list: Array<'reddit' | 'x' | 'youtube' | 'discord'> = [];
 	if (caps.reddit) list.push('reddit');
 	if (caps.x) list.push('x');
 	if (caps.youtube) list.push('youtube');
+	if (caps.discord) list.push('discord');
 	return list;
 }

@@ -12,14 +12,16 @@ import { availablePlatforms, availableSearchModes } from '../capabilities';
 const PLATFORM_ENV: Record<string, string> = {
 	reddit: 'REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET',
 	x: 'TWITTERAPI_IO_KEY',
-	youtube: 'YOUTUBE_API_KEY'
+	youtube: 'YOUTUBE_API_KEY',
+	discord: 'DISCORD_USER_TOKEN and DISCORD_RELAY_SECRET (plus a running companion — see README)'
 };
 
 export interface SearchArgs {
 	query: string;
-	platform: 'reddit' | 'x' | 'youtube' | 'both' | 'all';
+	platform: 'reddit' | 'x' | 'youtube' | 'discord' | 'both' | 'all';
 	time: 'day' | 'week' | 'month' | 'year' | 'all';
 	community?: string;
+	guild?: string;
 	sort: 'relevance' | 'top' | 'new';
 	limit: number;
 }
@@ -107,7 +109,12 @@ const SEARCH_DESCRIPTION =
 	'results to learn where the topic actually lives, then search again scoped to it. ' +
 	"X extras: 'from:user', 'min_faves:100' (quality floor), 'since:2026-07-01'. " +
 	'YouTube search is quota-limited to roughly 90 calls per day, so prefer one good query over ' +
-	'several speculative ones there. Results are cached for 1 hour.';
+	'several speculative ones there. ' +
+	"Discord (when configured): pass platform: 'discord' explicitly — it is never in the default " +
+	'fan-out — and scope with "guild" to a server name the account has joined; omit "guild" to ' +
+	'search across all of them. Discord search returns raw message text without scores or comment ' +
+	'counts (Discord has no reactions in search results) and no thread expansion, so judge hits by ' +
+	'content. Results are cached for 1 hour.';
 
 const THREAD_DESCRIPTION =
 	'Fetch a full discussion thread with its scored comment/reply tree — use after social_search to ' +
@@ -232,6 +239,8 @@ export function handleToolsList(
 	const searchPlatforms: string[] = [...platforms];
 	if (platforms.length > 1) {
 		if (caps.reddit && caps.x) searchPlatforms.push('both');
+		// "all" is the fan-out default's companion; Discord is deliberately not in
+		// "all" (opt-in only, user-token volume), so "all" stays reddit+x+youtube.
 		searchPlatforms.push('all');
 	}
 
@@ -258,7 +267,8 @@ export function handleToolsList(
 								? 'Where to search. Defaults to the text platforms configured here (Reddit ' +
 									'and/or X). "all" adds YouTube — ask for it when video tutorials or talks would ' +
 									'help, bearing in mind YouTube search has a much tighter daily quota, which is ' +
-									'why it is not in the default.'
+									'why it is not in the default. Discord is never in "all": pass platform: ' +
+									"'discord' explicitly when Discord discussion would help."
 								: `Where to search. Only ${platforms[0]} is configured on this server.`
 					},
 					time: {
@@ -275,6 +285,17 @@ export function handleToolsList(
 								? ' Call find_communities first if you do not know which subreddit owns the topic.'
 								: '')
 					},
+					...(caps.discord
+						? {
+								guild: {
+									type: 'string',
+									description:
+										"Discord only: the server to search, by name (e.g. 'LlamaIndex') or id. " +
+										'Omit to search every server the account has joined — noisier and ' +
+										'slightly slower. Has no effect on other platforms.'
+								}
+							}
+						: {}),
 					sort: {
 						type: 'string',
 						enum: ['relevance', 'top', 'new'],
@@ -546,12 +567,14 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		}
 		// Default to the cheap, high-volume platforms; YouTube stays opt-in because
 		// its search quota is ~90/day while Reddit and X are effectively unlimited.
-		const cheap = available.filter((p) => p !== 'youtube');
+		// Discord stays opt-in too: user-token traffic is the volume-sensitive path
+		// (docs/discord-research.md), so it must never ride along on a default fan-out.
+		const cheap = available.filter((p) => p !== 'youtube' && p !== 'discord');
 		const defaultPlatform =
 			cheap.length === 2 ? 'both' : cheap.length === 1 ? cheap[0] : available[0];
 		const platform = args.platform ?? defaultPlatform;
-		if (!isOneOf(platform, ['reddit', 'x', 'youtube', 'both', 'all'] as const)) {
-			return invalid("'platform' must be one of: reddit, x, youtube, both, all.");
+		if (!isOneOf(platform, ['reddit', 'x', 'youtube', 'discord', 'both', 'all'] as const)) {
+			return invalid("'platform' must be one of: reddit, x, youtube, discord, both, all.");
 		}
 		if (platform !== 'both' && platform !== 'all') {
 			const err = platformUnavailable(platform, caps);
@@ -569,6 +592,15 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		if (community !== undefined && typeof community !== 'string') {
 			return invalid("'community' must be a string subreddit name.");
 		}
+		const guild = args.guild;
+		if (guild !== undefined) {
+			if (typeof guild !== 'string' || !guild.trim()) {
+				return invalid("'guild' must be a Discord server name or id.");
+			}
+			if (platform !== 'discord' && platform !== 'all') {
+				return invalid("'guild' only applies when platform is 'discord'.");
+			}
+		}
 		const rawLimit = args.limit ?? 10;
 		if (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit)) {
 			return invalid("'limit' must be a number between 1 and 25.");
@@ -577,14 +609,25 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		return {
 			ok: true,
 			tool: 'social_search',
-			args: { query: query.trim(), platform, time, community, sort, limit }
+			args: {
+				query: query.trim(),
+				platform,
+				time,
+				community,
+				...(typeof guild === 'string' ? { guild: guild.trim() } : {}),
+				sort,
+				limit
+			}
 		};
 	}
 
 	if (p?.name === 'get_thread') {
 		const platform = args.platform;
 		if (!isOneOf(platform, ['reddit', 'x', 'youtube'] as const)) {
-			return invalid("'platform' must be 'reddit', 'x' or 'youtube'.");
+			return invalid(
+				"'platform' must be 'reddit', 'x' or 'youtube'. Discord is search-only — pass the " +
+					'message id back to social_search with more specific keywords or a guild filter.'
+			);
 		}
 		const unavailable = platformUnavailable(platform, caps);
 		if (unavailable) return unavailable;

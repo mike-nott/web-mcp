@@ -10,6 +10,8 @@ export interface Env {
 	EXA_API_KEY: string;
 	BRAVE_API_KEY: string;
 	TAVILY_API_KEY: string;
+	/** Dedicated Discord account token; user-token path (docs/discord-research.md). */
+	DISCORD_USER_TOKEN: string;
 	/** "auto" (default, prefers Tavily), "tavily", or "brave". */
 	KEYWORD_SEARCH_PROVIDER: string;
 	REDDIT_USER_AGENT: string;
@@ -20,4 +22,9 @@ export interface Env {
 	EXA_DAILY_CALL_LIMIT: string;
 	BRAVE_DAILY_CALL_LIMIT: string;
 	TAVILY_DAILY_LIMIT: string;
+	DISCORD_DAILY_CALL_LIMIT: string;
+	/** Shared secret the local companion presents to the relay DO. */
+	DISCORD_RELAY_SECRET: string;
+	/** The DiscordRelay Durable Object binding. */
+	DISCORD_RELAY: DurableObjectNamespace;
 }

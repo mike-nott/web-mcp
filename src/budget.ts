@@ -4,6 +4,7 @@ import { BudgetExceededError } from './providers/errors';
 const KEY_TTL_SECONDS = 172800; // 48h — key outlives its UTC day, then self-cleans
 
 type PaidProvider =
+	| 'discord'
 	| 'x'
 	| 'firecrawl'
 	| 'youtube_search'
@@ -16,6 +17,17 @@ const SETTINGS: Record<
 	PaidProvider,
 	{ label: string; fallbackLimit: number; envVar: keyof Env; advice: string }
 > = {
+	discord: {
+		label: 'Discord API call',
+		// Low ceiling: user-token traffic is the volume-sensitive path (docs/
+		// discord-research.md) — searches are cached 1h, so normal use is a
+		// handful of calls a day. The cap exists as a runaway backstop.
+		fallbackLimit: 100,
+		envVar: 'DISCORD_DAILY_CALL_LIMIT',
+		advice:
+			'Web search is unaffected — a site:discord.com query surfaces public snippets. ' +
+			'Raise DISCORD_DAILY_CALL_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
+	},
 	x: {
 		label: 'X API call',
 		fallbackLimit: 500,

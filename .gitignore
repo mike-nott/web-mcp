@@ -4,3 +4,4 @@ node_modules/
 .wrangler/
 .claude/
 .DS_Store
+.omp/

@@ -1,0 +1,27 @@
+[Unit]
+Description=web-mcp Discord companion relay
+Documentation=https://github.com/mike-nott/web-mcp#discord-companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust to where you placed the companion:
+ExecStart=/usr/bin/env node /opt/web-mcp-companion/companion.mjs
+# Secrets come from the EnvironmentFile — never put the relay secret in this
+# unit file, which is often world-readable in /etc/systemd/system.
+EnvironmentFile=/etc/web-mcp-companion.env
+Restart=always
+RestartSec=5
+# Hardening: the companion only needs network + a read of its config file.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyProtect=false
+# ~/.web-mcp-relay.json lives in the invoking user's home; run as a dedicated
+# user or set RELAY_CONFIG to a system location instead.
+User=webmcp
+
+[Install]
+WantedBy=multi-user.target
