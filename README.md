@@ -135,7 +135,18 @@ Everything is cached in KV and every paid provider has a daily spend ceiling tha
 
 ## Setup
 
-**1. Generate your token** — the only credential your clients need.
+**The fast path** — clone the repo, then one command:
+
+```bash
+./setup.sh
+```
+
+It generates your token, creates your KV namespace, deploys, and — if you want Discord — offers to install the companion on that machine right away, passing the token along so you never paste it twice. Re-run any time; existing tokens and namespaces are kept unless you say otherwise.
+
+<details>
+<summary><b>What setup.sh does step by step</b> (or do them by hand)</summary>
+
+**1. Generate your token** — the only credential your clients need:
 
 ```bash
 echo "webmcp_$(openssl rand 32 | base64 | tr '+/' '-_' | tr -d '=\n')"
@@ -221,6 +232,7 @@ npm run deploy
 ```
 
 The free Workers plan covers personal use comfortably.
+</details>
 
 **5. Connect your client:**
 
