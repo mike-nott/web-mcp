@@ -287,7 +287,6 @@ curl -fsSL https://raw.githubusercontent.com/mike-nott/web-mcp/main/companion/in
 
 **What the companion is and isn't:** it refuses anything that is not a GET under `discord.com/api/v10`, needs only Node ≥18 (zero npm dependencies), and never writes the Discord token to disk — the worker sends it per-request over the authenticated WebSocket. If no companion is connected, Discord search returns a readable error telling you to start one; every other platform is unaffected.
 
-Design history — including why Oxylabs residential proxies *don't* work (the CF-to-CF block is on TLS fingerprint, not IP) and the self-bot risk analysis — is in [docs/discord-research.md](docs/discord-research.md).
 
 Issues and ideas welcome.
 
