@@ -108,7 +108,9 @@ Two server-side properties turned out to decide whether a client works at all, b
 src/
   index.ts            fetch handler, JSON-RPC dispatch, SSE, CORS, /relay route
   relay.ts            DiscordRelay Durable Object — companion WebSocket rendezvous
-  auth.ts             single-secret bearer auth
+                      (companion authenticates with the same MCP_AUTH_TOKEN
+                      as the MCP clients — one secret, one trust domain)
+  auth.ts             bearer auth — MCP_AUTH_TOKEN (clients and companion alike)
   capabilities.ts     which providers are configured
   budget.ts           per-provider daily ceilings
   cache.ts            KV response cache
