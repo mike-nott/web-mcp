@@ -81,6 +81,7 @@ Facts that are not guessable from vendor documentation — two of them actively 
 | **Currents** | `keywords` matches **any** word ("electricity prices" returned a car-price story); `query` requires every word and takes `OR`, `NOT` and quoted phrases | The search text is sent as `query` |
 | **Currents** | One search may span at most **31 days** (400 `INVALID_QUERY`); `language` silently defaults to `en` | `time` day/week/month set `start_date`; `year`/`all` omit it (newest first) with a note for `year` |
 | **Currents** | On paid plans `description` runs to 2,500–3,600 chars — near the whole article — and terms forbid keeping copies | Highlights cut to 500 chars, `content: "text"` returns it all; news cache is 15 min |
+| **Currents** | Agency copy runs on several outlets under one headline (11 of 50 results), sometimes with " \| Outlet" appended | Asks for 3× the limit (max 50, still one call), keeps the first of each headline, notes how many were removed |
 | **Particle** | The transcript endpoint accepts the episode **slug** from a `radar.particle.pro` web URL, not only the id | `fetch_page` reads the slug straight from the URL — no lookup call |
 | **Particle** | Each episode-search result is a *segment*, so one episode can appear more than once | Left as-is: each hit is a different part of the conversation |
 | **Exa** | `deep`/`deep-reasoning` modes can run for minutes | Pinned to `auto` — anything longer breaks client tool timeouts |

@@ -26,6 +26,18 @@ import type { WebResult } from './types';
 const API_BASE = 'https://api.currentsapi.services/v1';
 const MAX_SPAN_DAYS = 31;
 const HIGHLIGHT_MAX = 500;
+const PAGE_SIZE_MAX = 50; // Builder plan's per-request maximum
+
+/**
+ * Headline as a duplicate key: case, punctuation and spacing ignored, and a
+ * short trailing " | Outlet" dropped (ITV appends " | ITV News" to the same
+ * agency headline). Only " | " is stripped — " - " is common inside headlines.
+ */
+function headlineKey(title: string): string {
+	const bar = title.lastIndexOf(' | ');
+	const base = bar > 0 && title.length - bar <= 40 ? title.slice(0, bar) : title;
+	return base.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
 
 export interface NewsArgs {
 	query: string;
@@ -70,10 +82,14 @@ export async function currentsSearch(env: Env, args: NewsArgs): Promise<NewsResp
 	}
 	await consumeBudget(env, 'currents');
 
+	// Agency copy (PA, AP, Reuters) runs on several outlets under the same
+	// headline — 11 of 50 results on 2026-11-22, and a 5-result search could come
+	// back as one story five times. Ask for extra, keep the first of each
+	// headline, then trim to the limit. Still one call.
 	const notes: string[] = [];
 	const params = new URLSearchParams({
 		query: args.query,
-		page_size: String(args.limit),
+		page_size: String(Math.min(PAGE_SIZE_MAX, args.limit * 3)),
 		language: args.language ?? 'en'
 	});
 	const days = SPAN_DAYS[args.time];
@@ -123,7 +139,25 @@ export async function currentsSearch(env: Env, args: NewsArgs): Promise<NewsResp
 	// (measured 2026-11-22), close to the article itself. "highlights" keeps the
 	// opening; "text" returns all of it; "none" drops it.
 	const data = (await res.json()) as RawResponse;
-	const results: WebResult[] = (data.news ?? []).map((a) => {
+	const seen = new Set<string>();
+	let duplicates = 0;
+	const unique = (data.news ?? []).filter((a) => {
+		const key = headlineKey(a.title ?? '');
+		if (!key) return true;
+		if (seen.has(key)) {
+			duplicates++;
+			return false;
+		}
+		seen.add(key);
+		return true;
+	});
+	if (duplicates > 0) {
+		notes.push(
+			`${duplicates} repeat${duplicates === 1 ? '' : 's'} of the same headline from other outlets ` +
+				`removed (syndicated copy).`
+		);
+	}
+	const results: WebResult[] = unique.slice(0, args.limit).map((a) => {
 		const published = toDate(a.published);
 		const author = a.author?.trim();
 		const description = a.description?.trim() ?? '';
