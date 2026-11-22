@@ -59,7 +59,7 @@ That's four of the five tools working, for £0.
 
 | Provider | Unlocks | Cost |
 |---|---|---|
-| **FireCrawl** | Reads bot-protected pages and PDFs | 1–5 credits, **only when blocked** |
+| **FireCrawl** | Reads bot-protected pages and PDFs — and, with the same key, the `alexandria` data catalogue | Pages: 1–5 credits, **only when blocked**. Alexandria: free to find and inspect, each call at its listed price |
 | **Supadata** | Video transcripts (YouTube, TikTok, Instagram, X) | 1 credit each |
 | **Exa** | Semantic search — finds pages whose keywords you can't guess, plus find-similar | ~$0.007/call |
 | **TwitterAPI.io** | X search and reply threads | ~$0.15/1k tweets |
@@ -94,7 +94,13 @@ That's four of the five tools working, for £0.
 |---|---|
 | `web_search` | `keyword` mode for factual lookups; `semantic` mode for *"essays arguing against microservices"* — pages that never use those words; `news` mode for current coverage by country and publisher |
 
-Five tools. No LLM inside the worker, no ranking, no summarising — raw signals go straight to the calling model, which does the thinking. Sprawling tool surfaces bloat context windows and confuse routing.
+**Reach the data** — records that live behind provider APIs, not on web pages
+
+| Tool | |
+|---|---|
+| `alexandria` | FireCrawl's catalogue of several hundred data providers — SEC filings, company financials, economic statistics, clinical trials, patents, research papers, government data. `find` a tool, `inspect` its inputs and price, then `call` it |
+
+Six tools. No LLM inside the worker, no ranking, no summarising — raw signals go straight to the calling model, which does the thinking. Sprawling tool surfaces bloat context windows and confuse routing.
 
 ---
 
@@ -203,6 +209,8 @@ Complementary to keyword search, not a replacement: semantic is measurably weake
 <summary><b>Bot-protected pages</b> — FireCrawl</summary>
 
 [firecrawl.dev](https://firecrawl.dev). `fetch_page` works without it on open pages — it only escalates at a genuine wall. 1 credit, up to 5 with the enhanced proxy.
+
+The same key unlocks the `alexandria` tool (FireCrawl's Alexandria data catalogue). Finding and inspecting tools is free; a call costs the credits the tool lists, and some tools are priced **per record**. Calls count against `ALEXANDRIA_DAILY_CREDIT_LIMIT` (default 1,000 credits a day), separate from the page-scrape cap. The cost is only known after a call, so one per-record call can overshoot the cap — every call is therefore logged to KV for 90 days: `npx wrangler kv key get alexandria:log:YYYY-MM-DD --binding KV --remote`.
 </details>
 
 <details>

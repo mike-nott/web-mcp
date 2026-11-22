@@ -4,6 +4,7 @@
 
 import type { Env } from './env';
 import type {
+	AlexandriaArgs,
 	FetchPageArgs,
 	FindCommunitiesArgs,
 	SearchArgs,
@@ -13,6 +14,7 @@ import type {
 import {
 	cacheKey,
 	getCached,
+	CATALOGUE_CACHE_TTL,
 	putCached,
 	COMMUNITY_CACHE_TTL,
 	NEWS_CACHE_TTL,
@@ -32,6 +34,7 @@ import { exaSearch } from './providers/exa';
 import { keywordSearch, resolveKeywordEngines } from './providers/keyword';
 import { currentsSearch } from './providers/currents';
 import { particleEpisodeSlug, particleSearch, particleTranscript } from './providers/particle';
+import { alexandriaCall, alexandriaFind, alexandriaInspect } from './providers/alexandria';
 
 export interface ToolResult {
 	text: string;
@@ -272,5 +275,41 @@ export async function runGetThread(env: Env, args: ThreadArgs): Promise<ToolResu
 		return ok(text);
 	} catch (err) {
 		return fail(err, 'get_thread failed');
+	}
+}
+
+export async function runAlexandria(env: Env, args: AlexandriaArgs): Promise<ToolResult> {
+	const key = await cacheKey('alexandria', { ...args });
+	const cached = await getCached(env.KV, key);
+	if (cached) return ok(cached);
+
+	try {
+		let payload: unknown;
+		let ttl: number;
+		if (args.action === 'find') {
+			payload = await alexandriaFind(env, { query: args.query ?? '', limit: args.limit });
+			ttl = CATALOGUE_CACHE_TTL;
+		} else if (args.action === 'inspect') {
+			payload = await alexandriaInspect(env, {
+				provider: args.provider ?? '',
+				capability: args.capability ?? '',
+				examples: args.examples
+			});
+			ttl = CATALOGUE_CACHE_TTL;
+		} else {
+			payload = await alexandriaCall(env, {
+				provider: args.provider ?? '',
+				capability: args.capability ?? '',
+				options: args.options ?? {},
+				maxChars: args.maxChars
+			});
+			// A repeat of the same call within the hour costs nothing.
+			ttl = SEARCH_CACHE_TTL;
+		}
+		const text = JSON.stringify(payload, null, 1);
+		await putCached(env.KV, key, text, ttl);
+		return ok(text);
+	} catch (err) {
+		return fail(err, `alexandria ${args.action} failed`);
 	}
 }

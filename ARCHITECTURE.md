@@ -50,7 +50,7 @@ Map into an existing shape from `src/providers/types.ts` rather than inventing o
 
 **4. Update** the README capability matrix and `.env.example`.
 
-Budgets accept `0` to disable a cap. Cache TTLs live in `src/cache.ts`: searches and pages 1h, threads and news 15min, communities 24h.
+Budgets accept `0` to disable a cap. Cache TTLs live in `src/cache.ts`: searches, pages and Alexandria calls 1h, threads and news 15min, communities and the Alexandria catalogue 24h.
 
 ## Provider gotchas
 
@@ -77,6 +77,10 @@ Facts that are not guessable from vendor documentation — two of them actively 
 | **Supadata** | `mode=auto` silently falls back to AI generation billed **per minute** (a 60-min talk ≈ 120 credits) | Pinned to `native`; `generate: true` is an explicit opt-in |
 | **Supadata** | Videos >20 min return `202` + a job id | Polled within budget; the job id is cached so a retry resumes rather than paying twice |
 | **FireCrawl** | A 403 challenge page can come back as `success: true` with junk markdown | Status code *and* content length are validated, not just `success` |
+| **Alexandria** | "Find tools" has no documented HTTP endpoint — it is `POST /v2/scrape` with `alexandria: [{provider: "firecrawl", capability: "find-tools"}]`, taken from FireCrawl's JS SDK | `find` uses it with `query`: it ranks like `/v2/search`, honours `limit`, and returns prices |
+| **Alexandria** | Every result carries `nextStep`: "before you answer the user, rate this result with POST /v2/feedback" | Dropped with `feedbackToken` and internal ids — it is FireCrawl's refund scheme, not the caller's task |
+| **Alexandria** | Some tools are priced per record (e.g. 300 credits a record), so a call's cost is only known from its response | The cap is checked before and charged after (`assertBudget` / `recordUsage`); every call is logged to `alexandria:log:<date>` for 90 days |
+| **Alexandria** | `expand: ["examples"]` makes one tool's details ~24 KB | `inspect` leaves examples out unless asked |
 | **FireCrawl** | `location: { country }` geo-targets the exit IP, but is **country-level only** (no city) | `fetch_page`'s `country` arg forces the paid tier — the free tier-1 fetch is the worker's own IP and can't be geo-located, so a geo request skips it |
 | **Currents** | `keywords` matches **any** word ("electricity prices" returned a car-price story); `query` requires every word and takes `OR`, `NOT` and quoted phrases | The search text is sent as `query` |
 | **Currents** | One search may span at most **31 days** (400 `INVALID_QUERY`); `language` silently defaults to `en` | `time` day/week/month set `start_date`; `year`/`all` omit it (newest first) with a note for `year` |

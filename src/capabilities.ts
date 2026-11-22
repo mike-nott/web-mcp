@@ -26,6 +26,8 @@ export interface Capabilities {
 	currents: boolean;
 	/** Podcast dialogue search and transcripts via Particle. */
 	particle: boolean;
+	/** FireCrawl's Alexandria data catalogue — same key as FireCrawl scraping. */
+	alexandria: boolean;
 	/** True when either keyword engine is usable under the current preference. */
 	keyword: boolean;
 }
@@ -54,6 +56,7 @@ export function detectCapabilities(env: Env): Capabilities {
 		discord: set(env.DISCORD_USER_TOKEN),
 		currents: set(env.CURRENTS_API_KEY),
 		particle: set(env.PARTICLE_API_KEY),
+		alexandria: set(env.FIRECRAWL_API_KEY),
 		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
 		// missing means keyword search is genuinely unavailable, not silently
 		// served by the other one.

@@ -29,6 +29,8 @@ export interface Env {
 	DISCORD_DAILY_CALL_LIMIT: string;
 	CURRENTS_DAILY_LIMIT: string;
 	PARTICLE_DAILY_LIMIT: string;
+	/** Alexandria, counted in credits rather than calls. */
+	ALEXANDRIA_DAILY_CREDIT_LIMIT: string;
 	/** Shared secret the local companion presents to the relay DO. */
 	/** The DiscordRelay Durable Object binding. */
 	DISCORD_RELAY: DurableObjectNamespace;

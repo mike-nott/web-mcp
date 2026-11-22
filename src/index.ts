@@ -20,6 +20,7 @@ import { authenticateRequest } from './auth';
 import { detectCapabilities } from './capabilities';
 import { DiscordRelay } from './relay';
 import {
+	runAlexandria,
 	runFetchPage,
 	runFindCommunities,
 	runGetThread,
@@ -174,6 +175,9 @@ async function dispatch(body: JsonRpcRequest, env: Env): Promise<JsonRpcResponse
 					break;
 				case 'web_search':
 					result = await runWebSearch(env, validated.args);
+					break;
+				case 'alexandria':
+					result = await runAlexandria(env, validated.args);
 					break;
 			}
 			return {

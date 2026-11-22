@@ -63,12 +63,24 @@ export interface WebSearchArgs {
 	language?: string;
 }
 
+export interface AlexandriaArgs {
+	action: 'find' | 'inspect' | 'call';
+	query?: string;
+	limit: number;
+	provider?: string;
+	capability?: string;
+	options?: Record<string, unknown>;
+	examples: boolean;
+	maxChars: number;
+}
+
 export type ValidatedCall =
 	| { ok: true; tool: 'social_search'; args: SearchArgs }
 	| { ok: true; tool: 'get_thread'; args: ThreadArgs }
 	| { ok: true; tool: 'fetch_page'; args: FetchPageArgs }
 	| { ok: true; tool: 'find_communities'; args: FindCommunitiesArgs }
 	| { ok: true; tool: 'web_search'; args: WebSearchArgs }
+	| { ok: true; tool: 'alexandria'; args: AlexandriaArgs }
 	| { ok: false; code: number; message: string };
 
 // Our tool surface is identical across these revisions, so agreeing with
@@ -261,6 +273,22 @@ function webSearchDescription(caps: Capabilities): string {
 	);
 	return parts.join(' ');
 }
+
+const ALEXANDRIA_DESCRIPTION =
+	'Structured data straight from official and commercial data providers, for when the answer is a ' +
+	'dataset, filing or record rather than a web page: SEC filings and XBRL figures, company financials, ' +
+	'economic statistics (BLS and others), clinical trials, patents, research papers, government ' +
+	'spending and procurement, and several hundred more sources. ' +
+	'Work in three steps. (1) action "find" with a plain description of the data you need returns ' +
+	'ranked tools, each a provider + capability, with its price in credits. (2) action "inspect" on ' +
+	'one provider + capability returns its inputs (names, types, defaults, allowed values) and response ' +
+	'fields. (3) action "call" runs it with "options" built from what inspect showed. Find and inspect ' +
+	'are free; a call costs the listed credits (some tools are priced per record returned, marked ' +
+	'per_record — keep record counts small on those). A wrong or missing option comes back as a free ' +
+	'error listing the valid options, so correct it and retry. Results carry a "source" attribution: ' +
+	'cite it. If a tool reports that its data terms must be accepted, tell the user and give them the ' +
+	'link; never try to accept terms yourself. This does not read web pages — use fetch_page for a URL, ' +
+	'and web_search to search the web. Find and inspect are cached for 24 hours, calls for 1 hour.';
 
 export function handleToolsList(
 	id: string | number | null,
@@ -564,6 +592,67 @@ export function handleToolsList(
 								}
 							}
 						: {})
+				},
+				additionalProperties: false
+			}
+		});
+	}
+
+	if (caps.alexandria) {
+		tools.push({
+			name: 'alexandria',
+			description: ALEXANDRIA_DESCRIPTION,
+			inputSchema: {
+				type: 'object',
+				properties: {
+					action: {
+						type: 'string',
+						enum: ['find', 'inspect', 'call'],
+						description:
+							'"find" a tool for a need, "inspect" its inputs and price, or "call" it. Default: find.'
+					},
+					query: {
+						type: 'string',
+						description:
+							'find only: the data you need, described plainly, e.g. "US unemployment rate time ' +
+							'series" or "risk factors from a company\'s latest 10-K".'
+					},
+					limit: {
+						type: 'integer',
+						minimum: 1,
+						maximum: 25,
+						description: 'find only: max tools returned. Default: 10.'
+					},
+					provider: {
+						type: 'string',
+						description: 'inspect and call: the provider from a find result, e.g. "sec-gov".'
+					},
+					capability: {
+						type: 'string',
+						description:
+							'inspect and call: the capability from a find result, e.g. "filings/sections".'
+					},
+					options: {
+						type: 'object',
+						description:
+							'call only: the tool\'s inputs as shown by inspect, e.g. {"ticker": "AAPL", ' +
+							'"items": ["1A"]}.'
+					},
+					examples: {
+						type: 'boolean',
+						description:
+							'inspect only: also return worked examples. Large (often 20 KB+), so only when the ' +
+							'inputs alone are unclear. Default: false.'
+					},
+					max_chars: {
+						type: 'integer',
+						minimum: 1000,
+						maximum: 200000,
+						description:
+							'call only: truncate the returned data to this many characters. Default: 50000. ' +
+							'Many tools also take their own size option (e.g. max_chars, limit) — prefer that, ' +
+							'as truncation here cuts the JSON mid-record.'
+					}
 				},
 				additionalProperties: false
 			}
@@ -892,9 +981,78 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		};
 	}
 
+	if (p?.name === 'alexandria') {
+		if (!caps.alexandria) {
+			return invalid('Alexandria is not configured on this server — set FIRECRAWL_API_KEY to enable it.');
+		}
+		const action = args.action ?? 'find';
+		if (!isOneOf(action, ['find', 'inspect', 'call'] as const)) {
+			return invalid("'action' must be 'find', 'inspect' or 'call'.");
+		}
+		const str = (v: unknown): string | undefined =>
+			typeof v === 'string' && v.trim() ? v.trim() : undefined;
+		if (action === 'find') {
+			const query = str(args.query);
+			if (!query) return invalid("action 'find' needs 'query': a plain description of the data you need.");
+			const rawLimit = args.limit ?? 10;
+			if (typeof rawLimit !== 'number' || !Number.isFinite(rawLimit)) {
+				return invalid("'limit' must be a number between 1 and 25.");
+			}
+			return {
+				ok: true,
+				tool: 'alexandria',
+				args: {
+					action,
+					query,
+					limit: Math.max(1, Math.min(25, Math.floor(rawLimit))),
+					examples: false,
+					maxChars: 50000
+				}
+			};
+		}
+		const provider = str(args.provider);
+		const capability = str(args.capability);
+		if (!provider || !capability) {
+			return invalid(
+				`action '${action}' needs 'provider' and 'capability' — take both from an action 'find' result.`
+			);
+		}
+		if (action === 'inspect') {
+			if (args.examples !== undefined && typeof args.examples !== 'boolean') {
+				return invalid("'examples' must be a boolean.");
+			}
+			return {
+				ok: true,
+				tool: 'alexandria',
+				args: { action, provider, capability, limit: 10, examples: args.examples === true, maxChars: 50000 }
+			};
+		}
+		const options = args.options ?? {};
+		if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+			return invalid("'options' must be an object of the tool's inputs, e.g. {\"ticker\": \"AAPL\"}.");
+		}
+		const rawMax = args.max_chars ?? 50000;
+		if (typeof rawMax !== 'number' || !Number.isFinite(rawMax)) {
+			return invalid("'max_chars' must be a number between 1000 and 200000.");
+		}
+		return {
+			ok: true,
+			tool: 'alexandria',
+			args: {
+				action,
+				provider,
+				capability,
+				options: options as Record<string, unknown>,
+				limit: 10,
+				examples: false,
+				maxChars: Math.max(1000, Math.min(200000, Math.floor(rawMax)))
+			}
+		};
+	}
+
 	return {
 		ok: false,
 		code: MCP_ERROR_CODES.METHOD_NOT_FOUND,
-		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread', 'fetch_page', 'find_communities' and 'web_search'.`
+		message: `Unknown tool: ${p?.name ?? '<missing>'}. This server exposes 'social_search', 'get_thread', 'fetch_page', 'find_communities', 'web_search' and 'alexandria'.`
 	};
 }

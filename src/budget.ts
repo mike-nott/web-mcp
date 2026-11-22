@@ -13,7 +13,8 @@ type PaidProvider =
 	| 'brave'
 	| 'tavily'
 	| 'currents'
-	| 'particle';
+	| 'particle'
+	| 'alexandria';
 
 const SETTINGS: Record<
 	PaidProvider,
@@ -96,8 +97,22 @@ const SETTINGS: Record<
 		envVar: 'PARTICLE_DAILY_LIMIT',
 		advice:
 			'The other social platforms are unaffected. Raise PARTICLE_DAILY_LIMIT in wrangler.toml (or set it to 0 to disable the cap), bearing in mind overage is billed.'
+	},
+	alexandria: {
+		label: 'Alexandria credit',
+		// Counted in CREDITS, not calls: a call's price is only known from its
+		// response (see assertBudget / recordUsage). Shares the FireCrawl plan's
+		// monthly credits with fetch_page scraping, so this keeps room for both.
+		fallbackLimit: 1000,
+		envVar: 'ALEXANDRIA_DAILY_CREDIT_LIMIT',
+		advice:
+			'alexandria find and inspect still work (they are free), as does every other tool. Raise ALEXANDRIA_DAILY_CREDIT_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
 	}
 };
+
+function budgetKey(provider: PaidProvider): string {
+	return `budget:${provider}:${new Date().toISOString().slice(0, 10)}`;
+}
 
 /** Returns the daily cap, or null when explicitly set to 0 (uncapped). */
 function configuredLimit(env: Env, provider: PaidProvider): number | null {
@@ -115,7 +130,7 @@ function configuredLimit(env: Env, provider: PaidProvider): number | null {
 export async function consumeBudget(env: Env, provider: PaidProvider): Promise<void> {
 	const limit = configuredLimit(env, provider);
 	if (limit === null) return; // cap disabled
-	const key = `budget:${provider}:${new Date().toISOString().slice(0, 10)}`;
+	const key = budgetKey(provider);
 	const current = Number.parseInt((await env.KV.get(key)) ?? '0', 10);
 	if (current >= limit) {
 		const { label, advice } = SETTINGS[provider];
@@ -124,4 +139,31 @@ export async function consumeBudget(env: Env, provider: PaidProvider): Promise<v
 		);
 	}
 	await env.KV.put(key, String(current + 1), { expirationTtl: KEY_TTL_SECONDS });
+}
+
+/**
+ * For providers priced per call only after the fact (Alexandria reports the
+ * credits a call used in its response): refuse once today's total has reached
+ * the cap. Pair with recordUsage after the call. A single call can overshoot by
+ * its own cost — per-record sources can cost hundreds of credits a record —
+ * which the owner accepted on 2026-11-22 in favour of a per-call usage log.
+ */
+export async function assertBudget(env: Env, provider: PaidProvider): Promise<void> {
+	const limit = configuredLimit(env, provider);
+	if (limit === null) return;
+	const current = Number.parseInt((await env.KV.get(budgetKey(provider))) ?? '0', 10);
+	if (current >= limit) {
+		const { label, advice } = SETTINGS[provider];
+		throw new BudgetExceededError(
+			`Daily ${label} budget (${limit}) is exhausted (${current} used today). It resets at midnight UTC. ${advice}`
+		);
+	}
+}
+
+/** Adds a call's reported cost to today's total. Counted even when the cap is disabled. */
+export async function recordUsage(env: Env, provider: PaidProvider, amount: number): Promise<void> {
+	if (!Number.isFinite(amount) || amount <= 0) return;
+	const key = budgetKey(provider);
+	const current = Number.parseInt((await env.KV.get(key)) ?? '0', 10);
+	await env.KV.put(key, String(current + Math.round(amount)), { expirationTtl: KEY_TTL_SECONDS });
 }
