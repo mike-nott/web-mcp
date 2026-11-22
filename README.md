@@ -214,7 +214,7 @@ Complementary to keyword search, not a replacement: semantic is measurably weake
 <details>
 <summary><b>News search</b> — Currents</summary>
 
-[currentsapi.services](https://currentsapi.services) → sign up → copy the API key. Adds `mode: "news"` to `web_search`. One search covers at most 31 days, and results are cached for only 15 minutes because Currents' terms do not allow keeping copies. The free plan cuts descriptions to 300 characters; paid plans return much longer extracts. `CURRENTS_DAILY_LIMIT` defaults to 2,400 (Builder allows 2,500, and refuses rather than bills past that).
+[currentsapi.services](https://currentsapi.services) → sign up → copy the API key. Adds `mode: "news"` to `web_search`. One search covers at most 31 days, and results are cached for only 15 minutes because Currents' terms do not allow keeping copies. The free plan cuts descriptions to 300 characters; paid plans return much longer extracts. `CURRENTS_DAILY_LIMIT` defaults to 2,000 (Builder allows 2,500, and refuses rather than bills past that).
 </details>
 
 <details>

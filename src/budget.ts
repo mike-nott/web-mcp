@@ -83,7 +83,7 @@ const SETTINGS: Record<
 	currents: {
 		label: 'news search',
 		// Builder plan: 2,500/day, refused (not billed) past that.
-		fallbackLimit: 2400,
+		fallbackLimit: 2000,
 		envVar: 'CURRENTS_DAILY_LIMIT',
 		advice:
 			'Keyword mode (mode: "keyword") still finds news. Raise CURRENTS_DAILY_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
