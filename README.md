@@ -7,7 +7,7 @@
 [![MCP](https://img.shields.io/badge/MCP-Streamable_HTTP-6E56CF)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Reddit and X block LLM traffic. Ordinary pages sit behind Cloudflare challenges. Search returns the marketing layer while the real answers sit in comment threads. A video's content is locked in its audio. And a local model with no search tool can't look up anything at all.
+Reddit and X block LLM traffic. Ordinary pages sit behind Cloudflare challenges. Search returns the marketing layer while the real answers sit in comment threads. A video's or a podcast's content is locked in its audio. Filings, statistics and trial records sit behind data-provider APIs rather than on pages. And a local model with no search tool can't look up anything at all.
 
 **One endpoint fixes all of it.** Deploy once to your own Cloudflare account, register one URL and one token, and every agent session gets the same reach.
 
@@ -19,8 +19,10 @@ flowchart LR
     W --> R["<b>Reddit</b><br/>posts · scored comments<br/>community discovery"]
     W --> X["<b>X</b><br/>posts · replies"]
     W --> Y["<b>YouTube</b><br/>videos · comments<br/><b>transcripts</b>"]
-    W --> S["<b>Open web</b><br/>keyword + semantic search"]
+    W --> PO["<b>Podcasts</b><br/>dialogue search<br/><b>transcripts</b>"]
+    W --> S["<b>Open web</b><br/>keyword · semantic · news"]
     W --> P["<b>Walled pages</b><br/>bot-blocked · JS shells · PDFs"]
+    W --> D["<b>Data providers</b><br/>SEC · statistics · trials<br/>patents · papers"]
 ```
 
 ---
@@ -53,7 +55,7 @@ These three cost **nothing**, ever:
 
 **Stop there and you already have:** community discovery · Reddit + YouTube search with engagement signals · full scored comment threads · keyword web search · and page fetching for every site that isn't actively blocking you.
 
-That's four of the five tools working, for £0.
+That's five of the six tools working, for £0 — only `alexandria` needs a (FireCrawl) key.
 
 ### Then add what you actually need
 
@@ -79,7 +81,7 @@ That's four of the five tools working, for £0.
 | Tool | |
 |---|---|
 | `social_search` | Search Reddit, X, YouTube and podcasts — and Discord servers a dedicated account has joined (opt-in: pass `platform: "discord"`). Returns engagement signals — scores, views, comment counts, authors, dates — so you can weigh consensus yourself |
-| `get_thread` | The full scored comment tree. High-voted *dissent* is often the most valuable thing on the page |
+| `get_thread` | The full scored comment tree. High-voted *dissent* is often the most valuable thing on the page (Reddit, X, YouTube; podcasts use `fetch_page` instead) |
 | `find_communities` | Which subreddits own a topic. Scoping a search is the single biggest quality lever |
 
 **Reach the page** — anything that blocks you
@@ -110,9 +112,13 @@ Six tools. No LLM inside the worker, no ranking, no summarising — raw signals 
 
 ```mermaid
 flowchart TD
-    U["fetch_page(url)"] --> V{"Video URL?"}
+    U["fetch_page(url)"] --> PC{"Podcast<br/>episode URL?"}
+    PC -->|yes| PT["Particle transcript<br/><i>1 call</i>"]
+    PC -->|no| V{"Video URL?"}
     V -->|yes| T["Transcript<br/><i>1 credit</i>"]
-    V -->|no| D["Direct fetch + HTMLRewriter<br/><b>FREE</b>"]
+    V -->|no| G{"country set?"}
+    G -->|yes| F
+    G -->|no| D["Direct fetch + HTMLRewriter<br/><b>FREE</b>"]
     D --> C{"Blocked, JS shell,<br/>or PDF?"}
     C -->|no| OK["Clean text ✓"]
     C -->|yes| F["FireCrawl stealth proxy<br/><i>1–5 credits</i>"]
@@ -135,7 +141,21 @@ flowchart LR
 
 Their indexes are largely disjoint, so recall roughly doubles. Every result lists which `engines` found it — cross-index agreement is handed to your model as a signal, not baked into a ranking here.
 
-Everything is cached in KV and every paid provider has a daily spend ceiling that fails with a readable message rather than a surprise bill.
+### `alexandria` — find, inspect, then call
+
+```mermaid
+flowchart LR
+    N["What data do you need?"] --> FI["find<br/><b>FREE</b>"]
+    FI -->|"ranked tools + prices"| IN["inspect<br/><b>FREE</b>"]
+    IN -->|"inputs + response fields"| CA["call<br/><i>listed credits</i>"]
+    CA --> OUT["Data + source attribution"]
+    CA -.->|"wrong option"| E["Free error listing<br/>the valid options"]
+    E -.-> CA
+```
+
+FireCrawl's catalogue covers several hundred providers. Discovery never costs anything, and a mistaken call is refused for free with the options it would accept, so the calling model can correct itself. FireCrawl's own "rate this before you answer the user" instruction is stripped from every result.
+
+Everything is cached in KV and every paid provider has a daily spend ceiling that fails with a readable message rather than a surprise bill. Alexandria's ceiling is counted in credits rather than calls, and every Alexandria call is logged for 90 days.
 
 > Extending it, or want the reasoning behind the design? **[ARCHITECTURE.md](ARCHITECTURE.md)** covers the principles, how to add a provider, and the per-provider gotchas that aren't in any vendor's docs.
 
@@ -289,7 +309,10 @@ The server speaks both halves of Streamable HTTP: plain JSON responses, or SSE w
 
 ## Good to know
 
-- **Search technique matters.** Reddit, X and YouTube match keywords, not meaning — a natural-language question silently degrades into "merely popular posts". Short keyword queries win, and scoping to a subreddit is the biggest lever. The tool descriptions teach your model this, so you don't have to.
+- **Search technique matters.** Reddit, X, YouTube, podcasts and news all match keywords, not meaning — a natural-language question silently degrades into "merely popular posts". Short keyword queries win, and scoping to a subreddit is the biggest lever. The tool descriptions teach your model this, so you don't have to.
+- **News search** requires every word to appear and accepts `OR`, `NOT` and quoted phrases. Agency stories syndicated across outlets under one headline are collapsed to one result, with a note of how many repeats were removed.
+- **Podcasts are opt-in.** `platform: "podcasts"` searches them directly and `"all"` includes them; the default fan-out (Reddit + X) never does, because every Particle call counts against a monthly plan.
+- **Alexandria per-record pricing.** Some data tools charge per record returned (one contact-lookup tool is 300 credits a record). The price is shown by `find` and `inspect`, but the cost of a call is only known afterwards, so one large per-record call can overshoot the daily credit cap. Read a day's log with `npx wrangler kv key get alexandria:log:YYYY-MM-DD --binding KV --remote`.
 - **Geo-targeted fetch.** Pass `country` (ISO 3166-1 alpha-2, e.g. `US`, `DE`, `JP`) to `fetch_page` to read a page as seen from that country — for geo-restricted or geo-varying content. Country-level only, and it forces the paid FireCrawl tier (the free fetch uses the worker's own IP and can't be geo-located).
 - **Transcripts** cost 1 credit using existing captions. `generate: true` transcribes audio instead, billed **per minute** — a 60-minute talk ≈ 120 credits. Opt-in only.
 - **TwitterAPI.io is third-party** — ~30× cheaper than the official X API, but grey-market. `src/providers/` is abstracted, so swapping is contained.
