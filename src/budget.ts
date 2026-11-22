@@ -11,7 +11,9 @@ type PaidProvider =
 	| 'supadata'
 	| 'exa'
 	| 'brave'
-	| 'tavily';
+	| 'tavily'
+	| 'currents'
+	| 'particle';
 
 const SETTINGS: Record<
 	PaidProvider,
@@ -77,6 +79,23 @@ const SETTINGS: Record<
 		envVar: 'SUPADATA_DAILY_LIMIT',
 		advice:
 			'Video metadata and comments still work via get_thread. Raise SUPADATA_DAILY_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
+	},
+	currents: {
+		label: 'news search',
+		// Builder plan: 2,500/day, refused (not billed) past that.
+		fallbackLimit: 2400,
+		envVar: 'CURRENTS_DAILY_LIMIT',
+		advice:
+			'Keyword mode (mode: "keyword") still finds news. Raise CURRENTS_DAILY_LIMIT in wrangler.toml (or set it to 0 to disable the cap).'
+	},
+	particle: {
+		label: 'podcast API call',
+		// Individual plan: 10,000 calls/month with overage billed, so 300/day keeps a
+		// month inside the plan. Counts searches and transcripts alike.
+		fallbackLimit: 300,
+		envVar: 'PARTICLE_DAILY_LIMIT',
+		advice:
+			'The other social platforms are unaffected. Raise PARTICLE_DAILY_LIMIT in wrangler.toml (or set it to 0 to disable the cap), bearing in mind overage is billed.'
 	}
 };
 

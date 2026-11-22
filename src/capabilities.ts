@@ -22,6 +22,10 @@ export interface Capabilities {
 	tavily: boolean;
 	/** Dedicated-account guild message search. */
 	discord: boolean;
+	/** News article search via Currents. */
+	currents: boolean;
+	/** Podcast dialogue search and transcripts via Particle. */
+	particle: boolean;
 	/** True when either keyword engine is usable under the current preference. */
 	keyword: boolean;
 }
@@ -48,6 +52,8 @@ export function detectCapabilities(env: Env): Capabilities {
 		// part of this gate: its absence surfaces as a readable per-search
 		// error, not a missing tool.
 		discord: set(env.DISCORD_USER_TOKEN),
+		currents: set(env.CURRENTS_API_KEY),
+		particle: set(env.PARTICLE_API_KEY),
 		// Respects KEYWORD_SEARCH_PROVIDER: forcing an engine whose key is
 		// missing means keyword search is genuinely unavailable, not silently
 		// served by the other one.
@@ -56,19 +62,25 @@ export function detectCapabilities(env: Env): Capabilities {
 }
 
 /** Search modes available on web_search, in default-preference order. */
-export function availableSearchModes(caps: Capabilities): Array<'keyword' | 'semantic'> {
-	const modes: Array<'keyword' | 'semantic'> = [];
+export type SearchMode = 'keyword' | 'semantic' | 'news';
+
+export function availableSearchModes(caps: Capabilities): SearchMode[] {
+	const modes: SearchMode[] = [];
 	if (caps.keyword) modes.push('keyword');
 	if (caps.exa) modes.push('semantic');
+	if (caps.currents) modes.push('news');
 	return modes;
 }
 
-/** Social platforms available for search/threads, in preference order. */
-export function availablePlatforms(caps: Capabilities): Array<'reddit' | 'x' | 'youtube' | 'discord'> {
-	const list: Array<'reddit' | 'x' | 'youtube' | 'discord'> = [];
+export type SocialPlatform = 'reddit' | 'x' | 'youtube' | 'discord' | 'podcasts';
+
+/** Social platforms available for search, in preference order. */
+export function availablePlatforms(caps: Capabilities): SocialPlatform[] {
+	const list: SocialPlatform[] = [];
 	if (caps.reddit) list.push('reddit');
 	if (caps.x) list.push('x');
 	if (caps.youtube) list.push('youtube');
 	if (caps.discord) list.push('discord');
+	if (caps.particle) list.push('podcasts');
 	return list;
 }

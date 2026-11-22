@@ -15,6 +15,7 @@ import {
 	getCached,
 	putCached,
 	COMMUNITY_CACHE_TTL,
+	NEWS_CACHE_TTL,
 	PAGE_CACHE_TTL,
 	SEARCH_CACHE_TTL,
 	THREAD_CACHE_TTL
@@ -29,6 +30,8 @@ import { firecrawlScrape } from './providers/firecrawl';
 import { fetchTranscript, isVideoUrl } from './providers/transcript';
 import { exaSearch } from './providers/exa';
 import { keywordSearch, resolveKeywordEngines } from './providers/keyword';
+import { currentsSearch } from './providers/currents';
+import { particleEpisodeSlug, particleSearch, particleTranscript } from './providers/particle';
 
 export interface ToolResult {
 	text: string;
@@ -49,13 +52,18 @@ export async function runSocialSearch(env: Env, args: SearchArgs): Promise<ToolR
 	const cached = await getCached(env.KV, key);
 	if (cached) return ok(cached);
 
+	// "both" is exactly Reddit + X; "all" adds YouTube and podcasts. Discord is
+	// never part of either (handled separately below).
 	const wants = (p: string): boolean =>
-		args.platform === p || args.platform === 'all' || (args.platform === 'both' && p !== 'youtube');
+		args.platform === p ||
+		args.platform === 'all' ||
+		(args.platform === 'both' && (p === 'reddit' || p === 'x'));
 
 	const tasks: Array<{ platform: string; run: Promise<SearchResult[]> }> = [];
 	if (wants('reddit')) tasks.push({ platform: 'reddit', run: redditSearch(env, args) });
 	if (wants('x')) tasks.push({ platform: 'x', run: xSearch(env, args) });
 	if (wants('youtube')) tasks.push({ platform: 'youtube', run: youtubeSearch(env, args) });
+	if (wants('podcasts')) tasks.push({ platform: 'podcasts', run: particleSearch(env, args) });
 	// Opt-in only: validation ensures 'discord' is never reachable via 'both'/'all'.
 	if (args.platform === 'discord') {
 		tasks.push({
@@ -99,12 +107,44 @@ export async function runWebSearch(env: Env, args: WebSearchArgs): Promise<ToolR
 	// would serve the previous engine's cached results for an hour, which defeats
 	// the point of being able to switch.
 	const engineKey =
-		args.mode === 'keyword' ? (resolveKeywordEngines(env).join('+') || 'none') : 'exa';
+		args.mode === 'keyword'
+			? resolveKeywordEngines(env).join('+') || 'none'
+			: args.mode === 'news'
+				? 'currents'
+				: 'exa';
 	const key = await cacheKey('web', { ...args, engine: engineKey });
 	const cached = await getCached(env.KV, key);
 	if (cached) return ok(cached);
 
 	try {
+		if (args.mode === 'news') {
+			const { results, notes } = await currentsSearch(env, {
+				query: args.query ?? '',
+				time: args.time,
+				limit: args.limit,
+				content: args.content,
+				includeDomains: args.includeDomains,
+				excludeDomains: args.excludeDomains,
+				country: args.country,
+				language: args.language
+			});
+			const allNotes = [
+				...notes,
+				...(args.category ? ['category is ignored in news mode.'] : [])
+			];
+			const text = JSON.stringify(
+				{
+					mode: 'news',
+					results,
+					...(allNotes.length ? { note: allNotes.join(' ') } : {})
+				},
+				null,
+				1
+			);
+			await putCached(env.KV, key, text, NEWS_CACHE_TTL);
+			return ok(text);
+		}
+
 		if (args.mode === 'keyword') {
 			const { results, notes, engines, creditsUsed } = await keywordSearch(env, {
 				query: args.query ?? '',
@@ -172,7 +212,11 @@ export async function runFetchPage(env: Env, args: FetchPageArgs): Promise<ToolR
 		// the HTML tiers, which would only return chrome.
 		let page;
 		let tier: string;
-		if (isVideoUrl(url)) {
+		if (env.PARTICLE_API_KEY && particleEpisodeSlug(url)) {
+			// A podcast episode's content is its transcript, not its web page.
+			page = await particleTranscript(env, url);
+			tier = 'transcript';
+		} else if (isVideoUrl(url)) {
 			// country does not apply: a transcript is location-independent.
 			page = await fetchTranscript(env, url.toString(), { generate: args.generate });
 			tier = 'transcript';

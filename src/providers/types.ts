@@ -2,7 +2,7 @@
 // model sees one consistent structure regardless of source — and the engagement
 // signals (score, comments, date) survive intact for it to weigh.
 
-export type Platform = 'reddit' | 'x' | 'youtube' | 'discord';
+export type Platform = 'reddit' | 'x' | 'youtube' | 'discord' | 'podcasts';
 
 export interface SearchResult {
 	platform: Platform;

@@ -10,6 +10,10 @@ export interface Env {
 	EXA_API_KEY: string;
 	BRAVE_API_KEY: string;
 	TAVILY_API_KEY: string;
+	/** News search (web_search mode "news"). */
+	CURRENTS_API_KEY: string;
+	/** Podcast dialogue search and transcripts. */
+	PARTICLE_API_KEY: string;
 	/** Dedicated Discord account token; user-token path. */
 	DISCORD_USER_TOKEN: string;
 	/** "auto" (default, prefers Tavily), "tavily", or "brave". */
@@ -23,6 +27,8 @@ export interface Env {
 	BRAVE_DAILY_CALL_LIMIT: string;
 	TAVILY_DAILY_LIMIT: string;
 	DISCORD_DAILY_CALL_LIMIT: string;
+	CURRENTS_DAILY_LIMIT: string;
+	PARTICLE_DAILY_LIMIT: string;
 	/** Shared secret the local companion presents to the relay DO. */
 	/** The DiscordRelay Durable Object binding. */
 	DISCORD_RELAY: DurableObjectNamespace;

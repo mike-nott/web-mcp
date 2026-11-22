@@ -7,18 +7,20 @@ import { MCP_PROTOCOL_VERSION } from './types';
 import { MCP_ERROR_CODES } from './errors';
 import type { Capabilities } from '../capabilities';
 import { availablePlatforms, availableSearchModes } from '../capabilities';
+import type { SearchMode } from '../capabilities';
 
 /** Names the env var a user must set to unlock each platform. */
 const PLATFORM_ENV: Record<string, string> = {
 	reddit: 'REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET',
 	x: 'TWITTERAPI_IO_KEY',
 	youtube: 'YOUTUBE_API_KEY',
-	discord: 'DISCORD_USER_TOKEN (plus a running companion — see README)'
+	discord: 'DISCORD_USER_TOKEN (plus a running companion — see README)',
+	podcasts: 'PARTICLE_API_KEY'
 };
 
 export interface SearchArgs {
 	query: string;
-	platform: 'reddit' | 'x' | 'youtube' | 'discord' | 'both' | 'all';
+	platform: 'reddit' | 'x' | 'youtube' | 'discord' | 'podcasts' | 'both' | 'all';
 	time: 'day' | 'week' | 'month' | 'year' | 'all';
 	community?: string;
 	guild?: string;
@@ -46,7 +48,7 @@ export interface FindCommunitiesArgs {
 }
 
 export interface WebSearchArgs {
-	mode: 'keyword' | 'semantic';
+	mode: 'keyword' | 'semantic' | 'news';
 	query?: string;
 	similarTo?: string;
 	time: string;
@@ -55,6 +57,10 @@ export interface WebSearchArgs {
 	includeDomains?: string[];
 	excludeDomains?: string[];
 	category?: string;
+	/** News mode only: ISO 3166-1 alpha-2, upper case. */
+	country?: string;
+	/** News mode only: ISO 639-1, lower case. */
+	language?: string;
 }
 
 export type ValidatedCall =
@@ -114,7 +120,13 @@ const SEARCH_DESCRIPTION =
 	'fan-out — and scope with "guild" to a server name the account has joined; omit "guild" to ' +
 	'search across all of them. Discord search returns raw message text without scores or comment ' +
 	'counts (Discord has no reactions in search results) and no thread expansion, so judge hits by ' +
-	'content. Results are cached for 1 hour.';
+	'content. ' +
+	"Podcasts (when configured): platform: 'podcasts' searches what was actually said in podcast " +
+	'episodes (transcribed, speaker-labelled dialogue). Every keyword must appear in the matched ' +
+	'dialogue. Each result is one episode segment with the matching lines, their timestamp, the ' +
+	'speaker and the show (in "community"); there are no scores or comment counts. Read the full ' +
+	'transcript with fetch_page on the result url — get_thread does not apply. Podcasts are ' +
+	'included in "all" but not in the default. Results are cached for 1 hour.';
 
 const THREAD_DESCRIPTION =
 	'Fetch a full discussion thread with its scored comment/reply tree — use after social_search to ' +
@@ -139,6 +151,12 @@ function fetchPageDescription(caps: Capabilities): string {
 		canRead.push(
 			'and video URLs (YouTube, TikTok, Instagram, X), where the content returned is the spoken ' +
 				'transcript — the only way to learn what a video actually says'
+		);
+	}
+	if (caps.particle) {
+		canRead.push(
+			'podcast episode URLs from social_search (radar.particle.pro), which return the full ' +
+				'speaker-labelled, timestamped transcript'
 		);
 	}
 	const tiers = caps.firecrawl
@@ -199,11 +217,24 @@ function webSearchDescription(caps: Capabilities): string {
 			'An ordinary keyword search engine over an independent index — good for factual lookups, ' +
 				'news, named things, versions and dates.'
 		);
-	} else {
+	} else if (caps.exa) {
 		parts.push(
 			'Semantic search: this matches MEANING rather than keywords, so describe what you want in ' +
 				'natural language — "essays arguing against microservices" — and the exact words need not ' +
 				'appear on the page. Also supports similar_to, which finds pages like a URL you already have.'
+		);
+	}
+
+	if (caps.currents) {
+		parts.push(
+			'NEWS mode (mode: "news") searches news articles from publishers — use it for current events ' +
+				'and coverage of a story, company or person. Query with keywords. Filter by "country" ' +
+				'(ISO code, e.g. "GB") and "language" (default English), and narrow to or away from ' +
+				'publishers with include_domains / exclude_domains. time "day", "week" or "month" sets the ' +
+				'window; "year" or "all" returns the newest matches, as one news search covers at most 31 ' +
+				'days. Returns headline, the opening of the article, the publisher URL, author and date ' +
+				'(content "text" returns a longer extract) — use fetch_page on a url for the full ' +
+				'article. News results are cached for 15 minutes.'
 		);
 	}
 
@@ -265,10 +296,10 @@ export function handleToolsList(
 						description:
 							platforms.length > 1
 								? 'Where to search. Defaults to the text platforms configured here (Reddit ' +
-									'and/or X). "all" adds YouTube — ask for it when video tutorials or talks would ' +
-									'help, bearing in mind YouTube search has a much tighter daily quota, which is ' +
-									'why it is not in the default. Discord is never in "all": pass platform: ' +
-									"'discord' explicitly when Discord discussion would help."
+									'and/or X). "all" adds YouTube and podcasts — ask for it when video tutorials, ' +
+									'talks or interviews would help, bearing in mind those have much tighter daily ' +
+									'quotas, which is why they are not in the default. Discord is never in "all": ' +
+									"pass platform: 'discord' explicitly when Discord discussion would help."
 								: `Where to search. Only ${platforms[0]} is configured on this server.`
 					},
 					time: {
@@ -312,7 +343,12 @@ export function handleToolsList(
 				additionalProperties: false
 			}
 		});
+	}
 
+	// Podcasts are search-only here: their full content is the transcript, read
+	// through fetch_page, so get_thread does not offer them.
+	const threadPlatforms = platforms.filter((p) => p !== 'podcasts');
+	if (threadPlatforms.length > 0) {
 		tools.push({
 			name: 'get_thread',
 			description: THREAD_DESCRIPTION,
@@ -321,7 +357,7 @@ export function handleToolsList(
 				properties: {
 					platform: {
 						type: 'string',
-						enum: platforms,
+						enum: threadPlatforms,
 						description: 'Which platform the id/URL belongs to.'
 					},
 					id: {
@@ -432,17 +468,30 @@ export function handleToolsList(
 									type: 'string',
 									enum: searchModes,
 									description:
-										'Which engine to use. "keyword" (default) is an ordinary search engine — ' +
-										'best for factual lookups, news and named things. "semantic" matches meaning ' +
-										'rather than words, and is required for similar_to.'
+										`Which engine to use. "${searchModes[0]}" is the default.` +
+										(caps.keyword
+											? ' "keyword" is an ordinary search engine — best for factual lookups and named things.'
+											: '') +
+										(caps.exa
+											? ' "semantic" matches meaning rather than words, and is required for similar_to.'
+											: '') +
+										(caps.currents
+											? ' "news" searches news articles, with country and language filters.'
+											: '')
 								}
 							}
 						: {}),
 					query: {
 						type: 'string',
 						description:
-							'What you are looking for, in natural language — this engine matches meaning, ' +
-							'so a full descriptive phrase works better than bare keywords. Omit if using similar_to.'
+							(caps.exa
+								? 'In semantic mode, describe what you are looking for in natural language — a ' +
+									'full descriptive phrase works better than bare keywords. '
+								: '') +
+							(caps.keyword || caps.currents
+								? `In ${[caps.keyword ? 'keyword' : '', caps.currents ? 'news' : ''].filter(Boolean).join(' and ')} mode, use keywords. `
+								: '') +
+							'Omit if using similar_to.'
 					},
 					similar_to: {
 						type: 'string',
@@ -469,7 +518,7 @@ export function handleToolsList(
 						description:
 							'How much page content to return. "highlights" (default) gives short ' +
 							'query-relevant excerpts; "text" gives a longer extract per result and costs ' +
-							'far more context (semantic mode only — keyword search returns snippets); ' +
+							'far more context (semantic and news modes — keyword search returns snippets); ' +
 							'"none" returns links only.'
 					},
 					include_domains: {
@@ -498,7 +547,22 @@ export function handleToolsList(
 						description:
 							'Restrict to a type of page. Useful for entity-style research, e.g. category ' +
 							'"company" when looking for businesses in a space. Semantic mode only.'
-					}
+					},
+					...(caps.currents
+						? {
+								country: {
+									type: 'string',
+									description:
+										'News mode only: articles from publishers in this country (ISO 3166-1 alpha-2, ' +
+										'e.g. "GB", "US", "DE").'
+								},
+								language: {
+									type: 'string',
+									description:
+										'News mode only: article language (ISO 639-1, e.g. "en", "fr", "de"). Default: en.'
+								}
+							}
+						: {})
 				},
 				additionalProperties: false
 			}
@@ -562,19 +626,22 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		if (available.length === 0) {
 			return invalid(
 				'No social platforms are configured on this server. Set REDDIT_CLIENT_ID/' +
-					'REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY or YOUTUBE_API_KEY to enable social_search.'
+					'REDDIT_CLIENT_SECRET, TWITTERAPI_IO_KEY, YOUTUBE_API_KEY or PARTICLE_API_KEY to enable social_search.'
 			);
 		}
 		// Default to the cheap, high-volume platforms; YouTube stays opt-in because
 		// its search quota is ~90/day while Reddit and X are effectively unlimited.
 		// Discord stays opt-in too: user-token traffic is the volume-sensitive path
 		//, so it must never ride along on a default fan-out.
-		const cheap = available.filter((p) => p !== 'youtube' && p !== 'discord');
+		// Podcasts likewise: every Particle call counts against a monthly plan.
+		const cheap = available.filter((p) => p !== 'youtube' && p !== 'discord' && p !== 'podcasts');
 		const defaultPlatform =
 			cheap.length === 2 ? 'both' : cheap.length === 1 ? cheap[0] : available[0];
 		const platform = args.platform ?? defaultPlatform;
-		if (!isOneOf(platform, ['reddit', 'x', 'youtube', 'discord', 'both', 'all'] as const)) {
-			return invalid("'platform' must be one of: reddit, x, youtube, discord, both, all.");
+		if (
+			!isOneOf(platform, ['reddit', 'x', 'youtube', 'discord', 'podcasts', 'both', 'all'] as const)
+		) {
+			return invalid("'platform' must be one of: reddit, x, youtube, discord, podcasts, both, all.");
 		}
 		if (platform !== 'both' && platform !== 'all') {
 			const err = platformUnavailable(platform, caps);
@@ -623,6 +690,12 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 
 	if (p?.name === 'get_thread') {
 		const platform = args.platform;
+		if (platform === 'podcasts') {
+			return invalid(
+				'Podcasts have no thread to fetch — use fetch_page on the episode url from social_search ' +
+					'to read the full transcript.'
+			);
+		}
 		if (!isOneOf(platform, ['reddit', 'x', 'youtube'] as const)) {
 			return invalid(
 				"'platform' must be 'reddit', 'x' or 'youtube'. Discord is search-only — pass the " +
@@ -704,7 +777,8 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		if (modes.length === 0) {
 			return invalid(
 				'No web search engine is configured on this server. Set TAVILY_API_KEY or ' +
-					'BRAVE_API_KEY for keyword search, or EXA_API_KEY for semantic search.'
+					'BRAVE_API_KEY for keyword search, EXA_API_KEY for semantic search, or ' +
+					'CURRENTS_API_KEY for news search.'
 			);
 		}
 		const query = args.query;
@@ -727,18 +801,42 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 		}
 		// find-similar is an Exa capability; it has no keyword equivalent.
 		const requestedMode = args.mode;
-		if (requestedMode !== undefined && !isOneOf(requestedMode, ['keyword', 'semantic'] as const)) {
-			return invalid("'mode' must be 'keyword' or 'semantic'.");
+		if (
+			requestedMode !== undefined &&
+			!isOneOf(requestedMode, ['keyword', 'semantic', 'news'] as const)
+		) {
+			return invalid("'mode' must be 'keyword', 'semantic' or 'news'.");
 		}
-		const mode = (requestedMode ?? (hasSimilar ? 'semantic' : modes[0])) as
-			| 'keyword'
-			| 'semantic';
+		const mode = (requestedMode ?? (hasSimilar ? 'semantic' : modes[0])) as SearchMode;
 		if (!modes.includes(mode)) {
+			const needs: Record<SearchMode, string> = {
+				keyword: 'TAVILY_API_KEY or BRAVE_API_KEY',
+				semantic: 'EXA_API_KEY',
+				news: 'CURRENTS_API_KEY'
+			};
 			return invalid(
-				`Search mode '${mode}' is not configured on this server — set ${
-					mode === 'keyword' ? 'TAVILY_API_KEY or BRAVE_API_KEY' : 'EXA_API_KEY'
-				} to enable it. Available: ${modes.join(', ')}.`
+				`Search mode '${mode}' is not configured on this server — set ${needs[mode]} to enable it. ` +
+					`Available: ${modes.join(', ')}.`
 			);
+		}
+		let country: string | undefined;
+		let language: string | undefined;
+		if (args.country !== undefined || args.language !== undefined) {
+			if (mode !== 'news') {
+				return invalid("'country' and 'language' only apply in news mode (mode: 'news').");
+			}
+			if (args.country !== undefined) {
+				if (typeof args.country !== 'string' || !/^[A-Za-z]{2}$/.test(args.country)) {
+					return invalid("'country' must be a two-letter ISO 3166-1 code, e.g. 'GB', 'US', 'DE'.");
+				}
+				country = args.country.toUpperCase();
+			}
+			if (args.language !== undefined) {
+				if (typeof args.language !== 'string' || !/^[A-Za-z]{2}$/.test(args.language)) {
+					return invalid("'language' must be a two-letter ISO 639-1 code, e.g. 'en', 'fr', 'de'.");
+				}
+				language = args.language.toLowerCase();
+			}
 		}
 		if (hasSimilar && mode !== 'semantic') {
 			return invalid(
@@ -786,7 +884,9 @@ export function validateToolCall(params: unknown, caps: Capabilities): Validated
 				content,
 				...(Array.isArray(include) ? { includeDomains: include } : {}),
 				...(Array.isArray(exclude) ? { excludeDomains: exclude } : {}),
-				...(category ? { category } : {})
+				...(category ? { category } : {}),
+				...(country ? { country } : {}),
+				...(language ? { language } : {})
 			}
 		};
 	}

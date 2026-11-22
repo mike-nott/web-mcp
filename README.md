@@ -64,6 +64,8 @@ That's four of the five tools working, for £0.
 | **Exa** | Semantic search — finds pages whose keywords you can't guess, plus find-similar | ~$0.007/call |
 | **TwitterAPI.io** | X search and reply threads | ~$0.15/1k tweets |
 | **Brave** | Keyword search with an independent index + publication dates | ~$5/1k, no free tier |
+| **Currents** | News search — `web_search` mode `news`, with country, language and publisher filters | Free 250/day; Builder $69/mo for 2,500/day |
+| **Particle** | Podcast search — what was actually said, speaker-labelled — plus full transcripts | $10 free credit; Individual $29/mo for 10,000 calls |
 | **Discord** | Message search across the servers a dedicated account has joined (needs a free companion process on a machine you own — see below) | Free — the companion runs on your own hardware |
 
 **`MCP_AUTH_TOKEN` is the only required secret.** Every source is independent, and the server **only advertises tools whose providers are configured** — your agent is never offered something it can't use, and never discovers that by failing.
@@ -76,7 +78,7 @@ That's four of the five tools working, for £0.
 
 | Tool | |
 |---|---|
-| `social_search` | Search Reddit, X, YouTube — and Discord servers a dedicated account has joined (opt-in: pass `platform: "discord"`). Returns engagement signals — scores, views, comment counts, authors, dates — so you can weigh consensus yourself |
+| `social_search` | Search Reddit, X, YouTube and podcasts — and Discord servers a dedicated account has joined (opt-in: pass `platform: "discord"`). Returns engagement signals — scores, views, comment counts, authors, dates — so you can weigh consensus yourself |
 | `get_thread` | The full scored comment tree. High-voted *dissent* is often the most valuable thing on the page |
 | `find_communities` | Which subreddits own a topic. Scoping a search is the single biggest quality lever |
 
@@ -84,13 +86,13 @@ That's four of the five tools working, for £0.
 
 | Tool | |
 |---|---|
-| `fetch_page` | Bot-protected pages, JavaScript shells, PDFs, and video transcripts. Free direct fetch first; paid escalation only on a genuine wall |
+| `fetch_page` | Bot-protected pages, JavaScript shells, PDFs, and video and podcast transcripts. Free direct fetch first; paid escalation only on a genuine wall |
 
 **Reach the open web** — for everything else
 
 | Tool | |
 |---|---|
-| `web_search` | `keyword` mode for factual lookups; `semantic` mode for *"essays arguing against microservices"* — pages that never use those words |
+| `web_search` | `keyword` mode for factual lookups; `semantic` mode for *"essays arguing against microservices"* — pages that never use those words; `news` mode for current coverage by country and publisher |
 
 Five tools. No LLM inside the worker, no ranking, no summarising — raw signals go straight to the calling model, which does the thinking. Sprawling tool surfaces bloat context windows and confuse routing.
 
@@ -207,6 +209,18 @@ Complementary to keyword search, not a replacement: semantic is measurably weake
 <summary><b>Video transcripts</b> — Supadata</summary>
 
 [supadata.ai](https://supadata.ai), 100/month free. Required because the official YouTube API *cannot* return transcripts: `captions.download` needs the video owner's OAuth, and auto-generated captions aren't exposed at all.
+</details>
+
+<details>
+<summary><b>News search</b> — Currents</summary>
+
+[currentsapi.services](https://currentsapi.services) → sign up → copy the API key. Adds `mode: "news"` to `web_search`. One search covers at most 31 days, and results are cached for only 15 minutes because Currents' terms do not allow keeping copies. The free plan cuts descriptions to 300 characters; paid plans return much longer extracts. `CURRENTS_DAILY_LIMIT` defaults to 2,400 (Builder allows 2,500, and refuses rather than bills past that).
+</details>
+
+<details>
+<summary><b>Podcasts</b> — Particle</summary>
+
+[particle.pro](https://particle.pro) → API key. Adds `platform: "podcasts"` to `social_search` (keyword search over transcribed, speaker-labelled dialogue), and `fetch_page` on a returned episode URL gives the full transcript. Podcasts are in `"all"` but not the default. Every call counts, and the Individual plan bills overage, so `PARTICLE_DAILY_LIMIT` defaults to 300/day (about 9,000 a month).
 </details>
 
 **3. Run locally** (optional):

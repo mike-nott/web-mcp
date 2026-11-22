@@ -50,7 +50,7 @@ Map into an existing shape from `src/providers/types.ts` rather than inventing o
 
 **4. Update** the README capability matrix and `.env.example`.
 
-Budgets accept `0` to disable a cap. Cache TTLs live in `src/cache.ts`: searches and pages 1h, threads 15min, communities 24h.
+Budgets accept `0` to disable a cap. Cache TTLs live in `src/cache.ts`: searches and pages 1h, threads and news 15min, communities 24h.
 
 ## Provider gotchas
 
@@ -78,6 +78,10 @@ Facts that are not guessable from vendor documentation — two of them actively 
 | **Supadata** | Videos >20 min return `202` + a job id | Polled within budget; the job id is cached so a retry resumes rather than paying twice |
 | **FireCrawl** | A 403 challenge page can come back as `success: true` with junk markdown | Status code *and* content length are validated, not just `success` |
 | **FireCrawl** | `location: { country }` geo-targets the exit IP, but is **country-level only** (no city) | `fetch_page`'s `country` arg forces the paid tier — the free tier-1 fetch is the worker's own IP and can't be geo-located, so a geo request skips it |
+| **Currents** | One search may span at most **31 days** (400 `INVALID_QUERY`); `language` silently defaults to `en` | `time` day/week/month set `start_date`; `year`/`all` omit it (newest first) with a note for `year` |
+| **Currents** | On paid plans `description` runs to 2,500–3,600 chars — near the whole article — and terms forbid keeping copies | Highlights cut to 500 chars, `content: "text"` returns it all; news cache is 15 min |
+| **Particle** | The transcript endpoint accepts the episode **slug** from a `radar.particle.pro` web URL, not only the id | `fetch_page` reads the slug straight from the URL — no lookup call |
+| **Particle** | Each episode-search result is a *segment*, so one episode can appear more than once | Left as-is: each hit is a different part of the conversation |
 | **Exa** | `deep`/`deep-reasoning` modes can run for minutes | Pinned to `auto` — anything longer breaks client tool timeouts |
 | **Cloudflare** | KV is eventually consistent, and deploys propagate unevenly for a minute or two | Don't judge a deploy immediately; verify by polling until behaviour is consistent |
 | **HTMLRewriter** | `element.remove()` strips from *output*, but text handlers still fire for removed content | Transform first, then strip tags — collecting via handlers leaks script bodies |
