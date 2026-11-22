@@ -10,6 +10,11 @@
 // 31 days (400 INVALID_QUERY otherwise); without start_date results come
 // newest first. The daily allowance resets at 00:00 UTC.
 //
+// The search text goes in `query`, not `keywords`: `keywords` matches ANY word
+// ("electricity prices" returned a car-price story), while `query` requires
+// every word and also takes OR, NOT and "quoted phrases" (20/20 results held
+// both words against 18/20, measured 2026-11-22).
+//
 // Currents' terms prohibit keeping copies, so results are cached only briefly
 // (NEWS_CACHE_TTL) rather than for the usual hour.
 
@@ -67,7 +72,7 @@ export async function currentsSearch(env: Env, args: NewsArgs): Promise<NewsResp
 
 	const notes: string[] = [];
 	const params = new URLSearchParams({
-		keywords: args.query,
+		query: args.query,
 		page_size: String(args.limit),
 		language: args.language ?? 'en'
 	});

@@ -228,7 +228,8 @@ function webSearchDescription(caps: Capabilities): string {
 	if (caps.currents) {
 		parts.push(
 			'NEWS mode (mode: "news") searches news articles from publishers — use it for current events ' +
-				'and coverage of a story, company or person. Query with keywords. Filter by "country" ' +
+				'and coverage of a story, company or person. Query with keywords: every word must appear, ' +
+				'and OR, NOT and "quoted phrases" are supported. Filter by "country" ' +
 				'(ISO code, e.g. "GB") and "language" (default English), and narrow to or away from ' +
 				'publishers with include_domains / exclude_domains. time "day", "week" or "month" sets the ' +
 				'window; "year" or "all" returns the newest matches, as one news search covers at most 31 ' +
